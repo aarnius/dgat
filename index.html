@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="en">
+<html lang="lt">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#6366f1">
-  <title>Attendance Tracker</title>
+  <title>Lankomumo žurnalas</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -18,25 +18,28 @@
 
   <dialog id="studentDialog">
     <form method="dialog" id="studentForm" class="dlg">
-      <div class="dlg-head"><h3 id="studentDialogTitle">Student</h3><button type="button" class="icon-btn" data-act="close-dialog" aria-label="Close">&times;</button></div>
+      <div class="dlg-head"><h3 id="studentDialogTitle">Mokinys</h3><button type="button" class="icon-btn" data-act="close-dialog" aria-label="Uždaryti">&times;</button></div>
       <input type="hidden" name="id">
       <div class="grid2">
-        <label>First name<input name="first" required></label>
-        <label>Last name<input name="last"></label>
+        <label>Vardas<input name="first" required></label>
+        <label>Pavardė<input name="last"></label>
       </div>
-      <label>Email<input name="email" type="email"></label>
-      <label>Parent / guardian email<input name="parentEmail" type="email"></label>
-      <label>Notes<textarea name="notes" rows="3"></textarea></label>
+      <label>El. paštas<input name="email" type="email"></label>
+      <label>Tėvų / globėjų el. paštas<input name="parentEmail" type="email"></label>
+      <label>Pastabos<textarea name="notes" rows="3"></textarea></label>
       <div class="dlg-actions">
-        <button type="button" class="btn" data-act="close-dialog">Cancel</button>
-        <button type="submit" class="btn primary">Save student</button>
+        <button type="button" class="btn" data-act="close-dialog">Atšaukti</button>
+        <button type="submit" class="btn primary">Išsaugoti mokinį</button>
       </div>
     </form>
   </dialog>
 
   <dialog id="importDialog"></dialog>
   <div id="toast" aria-live="polite"></div>
+  <div id="saveStatus" class="save-status" aria-live="polite" hidden></div>
 
+  <script src="auth.js"></script>
+  <script src="sync.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -2,10 +2,10 @@
 const KEY = 'attendance-tracker-v1';
 const THEME_KEY = 'attendance-theme';
 const STATUS = {
-  P: { label: 'Present', short: 'P', cls: 'p' },
-  A: { label: 'Absent', short: 'A', cls: 'a' },
-  L: { label: 'Late', short: 'L', cls: 'l' },
-  E: { label: 'Excused', short: 'E', cls: 'e' },
+  P: { label: 'Dalyvavo', short: 'D', cls: 'p' },
+  A: { label: 'Nedalyvavo', short: 'N', cls: 'a' },
+  L: { label: 'Vėlavo', short: 'V', cls: 'l' },
+  E: { label: 'Pateisinta', short: 'P', cls: 'e' },
 };
 
 const svg = (p, s) => `<svg viewBox="0 0 24 24" width="${s || 18}" height="${s || 18}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
@@ -17,11 +17,12 @@ const ICON = {
   db: svg('<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/>'),
   upload: svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/>'),
   plus: svg('<path d="M12 5v14M5 12h14"/>'),
+  shield: svg('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>'),
   moon: svg('<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>'),
   sun: svg('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
 };
 
-let state = load();
+let state = { classes: [], students: [], records: {}, currentClassId: null }; // užpildoma iš serverio (Sync.pull)
 let view = 'dashboard';
 let attDate = today();
 let search = '';
@@ -39,10 +40,7 @@ function load() {
   } catch (e) { /* ignore */ }
   return { classes: [], students: [], records: {}, currentClassId: null };
 }
-function save() {
-  try { localStorage.setItem(KEY, JSON.stringify(state)); }
-  catch (e) { alert('Could not save data in this browser. Download a backup from the Data tab.'); }
-}
+function save() { Sync.queue(); } // po kiekvieno pakeitimo išsaugoma serveryje
 function currentTheme() {
   let t = null;
   try { t = localStorage.getItem(THEME_KEY); } catch (e) { /* ignore */ }
@@ -65,7 +63,7 @@ function shiftDate(iso, days) {
 }
 function prettyDate(iso) {
   const [y, m, d] = iso.split('-').map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+  return new Date(y, m - 1, d).toLocaleDateString('lt-LT', { weekday: 'long', month: 'long', day: 'numeric' });
 }
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -75,7 +73,7 @@ function avatar(s) {
   const name = displayName(s) || '?';
   let h = 0;
   for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 360;
-  const ini = ((s.first || '?')[0] + (s.last || '')[0] || '').toUpperCase();
+  const ini = ((s.first || '?')[0] + ((s.last || '')[0] || '')).toUpperCase();
   return `<span class="avatar" style="background:linear-gradient(135deg,hsl(${h} 70% 55%),hsl(${(h + 40) % 360} 70% 48%))">${esc(ini)}</span>`;
 }
 function rateBadge(rate) {
@@ -184,15 +182,15 @@ function parseImport(text) {
   const rows = parseCSV(text, detectDelim(firstLine));
   if (!rows.length) return [];
   const head = rows[0].map((h) => h.trim().toLowerCase());
-  const hasHead = head.some((h) => !h.includes('@') && /first|given|forename|last|surname|family|name|e-?mail|parent|guardian/.test(h));
+  const hasHead = head.some((h) => !h.includes('@') && /first|given|forename|last|surname|family|name|e-?mail|parent|guardian|vardas|pavard|mokin|pašt|tėv|globėj/.test(h));
   let items;
   if (hasHead) {
     const find = (re) => head.findIndex((h) => re.test(h));
-    const iFirst = find(/first|given|forename/);
-    const iLast = find(/last|surname|family/);
-    const iFull = find(/^(full\s*)?name$|^student/);
-    const iParent = find(/parent|guardian/);
-    const iEmail = head.findIndex((h) => /mail/.test(h) && !/parent|guardian/.test(h));
+    const iFirst = find(/first|given|forename|vardas/);
+    const iLast = find(/last|surname|family|pavard/);
+    const iFull = find(/^(full\s*)?name$|^student|^mokin/);
+    const iParent = find(/parent|guardian|tėv|globėj/);
+    const iEmail = head.findIndex((h) => /mail|paštas/.test(h) && !/parent|guardian|tėv|globėj/.test(h));
     items = rows.slice(1).map((r) => {
       const cell = (i) => (i >= 0 ? (r[i] || '').trim() : '');
       let first = cell(iFirst), last = cell(iLast);
@@ -213,18 +211,35 @@ function parseImport(text) {
 const keyOf = (s) => (s.first + '|' + s.last).toLowerCase().trim();
 
 /* ---------- rendering ---------- */
-const NAV = [['dashboard', 'Dashboard', ICON.dash], ['attendance', 'Attendance', ICON.check], ['students', 'Students', ICON.users], ['reports', 'Reports', ICON.chart], ['data', 'Data', ICON.db]];
+const NAV = [['dashboard', 'Apžvalga', ICON.dash], ['attendance', 'Lankomumas', ICON.check], ['students', 'Mokiniai', ICON.users], ['reports', 'Ataskaitos', ICON.chart], ['data', 'Duomenys', ICON.db], ['users', 'Vartotojai', ICON.users], ['roles', 'Rolės', ICON.shield]];
+const VIEW_PERM = { dashboard: 'dashboard.view', attendance: 'attendance.view', students: 'students.view', reports: 'reports.view', data: 'data.view', users: 'users.manage', roles: 'roles.manage' };
+const ACT_PERM = {
+  'new-class': 'classes.manage', 'rename-class': 'classes.manage', 'delete-class': 'classes.manage',
+  mark: 'attendance.mark', 'all-present': 'attendance.mark', 'clear-day': 'attendance.mark',
+  'add-student': 'students.edit', 'edit-student': 'students.edit', 'delete-student': 'students.delete',
+  'open-import': 'students.import', 'do-import': 'students.import', template: 'students.import',
+  'export-report': 'reports.export', 'export-all-csv': 'data.backup', 'export-json': 'data.backup',
+  'restore-label': 'data.restore', wipe: 'data.wipe',
+};
+function applyPerms() {
+  document.querySelectorAll('[data-act]').forEach((el) => {
+    const p = ACT_PERM[el.dataset.act];
+    if (!p || Auth.can(p)) return;
+    if (el.dataset.act === 'mark') el.disabled = true; else el.style.display = 'none';
+  });
+  if (!Auth.can('attendance.mark')) document.querySelectorAll('[data-note]').forEach((el) => { el.disabled = true; });
+}
 
 function renderSide() {
   const has = state.classes.length > 0;
   const dark = currentTheme() === 'dark';
   side.innerHTML = `
-    <div class="brand"><span class="logo">${ICON.check}</span>Attendance</div>
-    ${has ? `<div class="class-box"><div class="lbl">Class</div>
-      <select id="classSelect" aria-label="Class">${state.classes.map((c) => `<option value="${c.id}" ${c.id === state.currentClassId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
-      <div class="class-links"><button class="link-btn" data-act="new-class">+ New</button><button class="link-btn" data-act="rename-class">Rename</button><button class="link-btn danger" data-act="delete-class">Delete</button></div></div>` : ''}
-    <nav class="nav">${NAV.map(([k, l, ic]) => `<button class="${view === k ? 'active' : ''}" data-act="tab" data-view="${k}">${ic}<span>${l}</span></button>`).join('')}</nav>
-    <div class="side-foot"><button class="btn small" data-act="theme" aria-label="Toggle theme">${dark ? ICON.sun : ICON.moon}<span class="hide-sm">${dark ? 'Light' : 'Dark'} mode</span></button></div>`;
+    <div class="brand"><span class="logo">${ICON.check}</span>Lankomumas</div>
+    ${has ? `<div class="class-box"><div class="lbl">Klasė</div>
+      <select id="classSelect" aria-label="Klasė">${state.classes.map((c) => `<option value="${c.id}" ${c.id === state.currentClassId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
+      <div class="class-links"><button class="link-btn" data-act="new-class">+ Nauja</button><button class="link-btn" data-act="rename-class">Pervadinti</button><button class="link-btn danger" data-act="delete-class">Ištrinti</button></div></div>` : ''}
+    <nav class="nav">${NAV.filter(([k]) => Auth.can(VIEW_PERM[k])).map(([k, l, ic]) => `<button class="${view === k ? 'active' : ''}" data-act="tab" data-view="${k}">${ic}<span>${l}</span></button>`).join('')}</nav>
+    <div class="side-foot">${Auth.userChip()}<button class="btn small" data-act="theme" aria-label="Keisti temą">${dark ? ICON.sun : ICON.moon}<span class="hide-sm">${dark ? 'Šviesi' : 'Tamsi'} tema</span></button></div>`;
 }
 
 function head(title, sub, actions) {
@@ -232,21 +247,36 @@ function head(title, sub, actions) {
 }
 
 function render() {
+  if (!Auth.user()) { Auth.renderAuth(); return; }
+  document.body.classList.remove('auth-mode');
+  if (!Auth.can(VIEW_PERM[view])) {
+    const ok = Object.keys(VIEW_PERM).find((k) => Auth.can(VIEW_PERM[k]));
+    if (!ok) {
+      renderSide();
+      app.innerHTML = '<div class="card empty"><h2>Nėra prieigos</h2><p>Jūsų rolė neturi jokių leidimų. Kreipkitės į administratorių.</p></div>';
+      return;
+    }
+    view = ok;
+  }
+  renderInner();
+  applyPerms();
+}
+function renderInner() {
   const y = window.scrollY;
   renderSide();
-  if (!state.classes.length && view !== 'data') {
-    app.innerHTML = `<div class="card empty"><div class="big">${svg('<path d="M20 6 9 17l-5-5"/>', 30)}</div><h2>Welcome to Attendance</h2>
-      <p>Create your first class, then add students one by one or import a whole class list in seconds.</p>
-      <button class="btn primary" data-act="new-class">${ICON.plus} Create a class</button></div>`;
+  if (!state.classes.length && !['data', 'users', 'roles'].includes(view)) {
+    app.innerHTML = `<div class="card empty"><div class="big">${svg('<path d="M20 6 9 17l-5-5"/>', 30)}</div><h2>Sveiki atvykę į Lankomumo žurnalą</h2>
+      <p>Sukurkite pirmą klasę, tada pridėkite mokinius po vieną arba importuokite visą sąrašą per kelias sekundes.</p>
+      <button class="btn primary" data-act="new-class">${ICON.plus} Sukurti klasę</button></div>`;
     return;
   }
-  ({ dashboard: renderDashboard, students: renderStudents, attendance: renderAttendance, reports: renderReports, data: renderData })[view]();
+  ({ dashboard: renderDashboard, students: renderStudents, attendance: renderAttendance, reports: renderReports, data: renderData, users: Auth.renderUsers, roles: Auth.renderRoles })[view]();
   window.scrollTo(0, y);
 }
 
 function greeting() {
   const h = new Date().getHours();
-  return h < 5 ? 'Working late' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+  return h < 5 ? 'Dirbate vėlai' : h < 12 ? 'Labas rytas' : h < 18 ? 'Laba diena' : 'Labas vakaras';
 }
 
 function renderDashboard() {
@@ -269,24 +299,24 @@ function renderDashboard() {
     const k = countDay(cid, d, list);
     const den = k.P + k.L + k.A;
     const r = den ? Math.round(((k.P + k.L) / den) * 100) : null;
-    return `<div class="bar" title="${d}: ${r == null ? 'no data' : r + '% present'}"><b>${r == null ? '' : r}</b><div class="col ${r == null ? 'none' : ''}" style="height:${r == null ? 4 : Math.max(r, 4)}%"></div><span>${d.slice(8)}</span></div>`;
+    return `<div class="bar" title="${d}: ${r == null ? 'nėra duomenų' : 'dalyvavo ' + r + '%'}"><b>${r == null ? '' : r}</b><div class="col ${r == null ? 'none' : ''}" style="height:${r == null ? 4 : Math.max(r, 4)}%"></div><span>${d.slice(8)}</span></div>`;
   }).join('');
   const anyData = days.some((d) => state.records[cid] && state.records[cid][d]);
 
-  app.innerHTML = head(`${greeting()} 👋`, `${esc(curClass().name)} · ${prettyDate(t)}`,
-    `<button class="btn" data-act="open-import">${ICON.upload} Import students</button><button class="btn primary" data-act="go-attendance">${ICON.check} Take attendance</button>`) +
+  app.innerHTML = head(`${greeting()}, ${esc(Auth.user().name.split(' ')[0])} 👋`, `${esc(curClass().name)} · ${prettyDate(t)}`,
+    `<button class="btn" data-act="open-import">${ICON.upload} Importuoti mokinius</button><button class="btn primary" data-act="go-attendance">${ICON.check} Žymėti lankomumą</button>`) +
     `<div class="stats">
-      <div class="stat" style="--c:var(--brand)"><div class="k">Students</div><div class="v">${list.length}</div><div class="h">in this class</div></div>
-      <div class="stat" style="--c:var(--p)"><div class="k">Present today</div><div class="v">${todayRate == null ? '–' : todayRate + '%'}</div><div class="h">${marked} of ${list.length} marked</div></div>
-      <div class="stat" style="--c:var(--a)"><div class="k">Absences this month</div><div class="v">${abs}</div><div class="h">across the class</div></div>
-      <div class="stat" style="--c:var(--l)"><div class="k">Needs attention</div><div class="v">${risk.length}</div><div class="h">below 80% attendance</div></div>
+      <div class="stat" style="--c:var(--brand)"><div class="k">Mokiniai</div><div class="v">${list.length}</div><div class="h">šioje klasėje</div></div>
+      <div class="stat" style="--c:var(--p)"><div class="k">Šiandien dalyvavo</div><div class="v">${todayRate == null ? '–' : todayRate + '%'}</div><div class="h">pažymėta ${marked} iš ${list.length}</div></div>
+      <div class="stat" style="--c:var(--a)"><div class="k">Praleidimai šį mėnesį</div><div class="v">${abs}</div><div class="h">visoje klasėje</div></div>
+      <div class="stat" style="--c:var(--l)"><div class="k">Reikia dėmesio</div><div class="v">${risk.length}</div><div class="h">lankomumas žemiau 80%</div></div>
     </div>
     <div class="two-col">
-      <div class="card"><h2>Last 14 days</h2><p class="sub">Percent of marked students present or late.</p>
-        ${anyData ? `<div class="bars">${bars}</div>` : '<p class="muted">No attendance recorded yet. Take attendance to see your trend here.</p>'}</div>
-      <div class="card"><h2>Needs attention</h2><p class="sub">Students under 80% (at least 3 marked days).</p>
-        ${risk.length ? `<div class="risk">${risk.slice(0, 6).map((x) => `<div class="risk-item">${avatar(x.s)}<div class="grow"><b>${esc(displayName(x.s))}</b><br><small class="muted">${x.st.A} absent · ${x.st.L} late</small></div>${rateBadge(x.st.rate)}</div>`).join('')}</div>`
-          : '<p class="muted">Nobody is below 80%. Nice work!</p>'}</div>
+      <div class="card"><h2>Paskutinės 14 dienų</h2><p class="sub">Dalyvavusių ar pavėlavusių pažymėtų mokinių dalis (%).</p>
+        ${anyData ? `<div class="bars">${bars}</div>` : '<p class="muted">Lankomumas dar nepažymėtas. Pažymėkite lankomumą, kad pamatytumėte tendenciją.</p>'}</div>
+      <div class="card"><h2>Reikia dėmesio</h2><p class="sub">Mokiniai, kurių lankomumas žemiau 80% (bent 3 pažymėtos dienos).</p>
+        ${risk.length ? `<div class="risk">${risk.slice(0, 6).map((x) => `<div class="risk-item">${avatar(x.s)}<div class="grow"><b>${esc(displayName(x.s))}</b><br><small class="muted">nedalyvavo ${x.st.A} · vėlavo ${x.st.L}</small></div>${rateBadge(x.st.rate)}</div>`).join('')}</div>`
+          : '<p class="muted">Niekas nėra žemiau 80%. Puiku!</p>'}</div>
     </div>`;
 }
 
@@ -299,23 +329,23 @@ function renderAttendance() {
     const btns = Object.keys(STATUS).map((k) =>
       `<button class="${STATUS[k].cls} ${r.s === k ? 'on' : ''}" title="${STATUS[k].label}" data-act="mark" data-sid="${s.id}" data-s="${k}"><span class="lg">${STATUS[k].label}</span><span class="sm">${STATUS[k].short}</span></button>`).join('');
     return `<tr><td><div class="who">${avatar(s)}<div><b>${esc(displayName(s))}</b></div></div></td><td><div class="seg">${btns}</div></td>` +
-      `<td class="hide-sm"><input class="note-input" data-note="${s.id}" placeholder="Add a note" value="${esc(r.n)}"></td></tr>`;
+      `<td class="hide-sm"><input class="note-input" data-note="${s.id}" placeholder="Pridėti pastabą" value="${esc(r.n)}"></td></tr>`;
   }).join('');
-  app.innerHTML = head('Attendance', prettyDate(attDate),
-    `<button class="btn" data-act="clear-day">Clear day</button><button class="btn primary" data-act="all-present">${ICON.check} Mark all present</button>`) +
+  app.innerHTML = head('Lankomumas', prettyDate(attDate),
+    `<button class="btn" data-act="clear-day">Išvalyti dieną</button><button class="btn primary" data-act="all-present">${ICON.check} Visi dalyvavo</button>`) +
     `<div class="card">
       <div class="date-bar">
-        <button class="icon-btn" data-act="prev-day" aria-label="Previous day">&larr;</button>
+        <button class="icon-btn" data-act="prev-day" aria-label="Ankstesnė diena">&larr;</button>
         <input type="date" id="attDate" value="${attDate}">
-        <button class="icon-btn" data-act="next-day" aria-label="Next day">&rarr;</button>
-        <button class="btn small" data-act="today">Today</button>
+        <button class="icon-btn" data-act="next-day" aria-label="Kita diena">&rarr;</button>
+        <button class="btn small" data-act="today">Šiandien</button>
       </div>
       <div class="pills">
-        <span class="pill p"><i></i>Present ${c.P}</span><span class="pill a"><i></i>Absent ${c.A}</span>
-        <span class="pill l"><i></i>Late ${c.L}</span><span class="pill e"><i></i>Excused ${c.E}</span><span class="pill n"><i></i>Not marked ${c.none}</span>
+        <span class="pill p"><i></i>Dalyvavo ${c.P}</span><span class="pill a"><i></i>Nedalyvavo ${c.A}</span>
+        <span class="pill l"><i></i>Vėlavo ${c.L}</span><span class="pill e"><i></i>Pateisinta ${c.E}</span><span class="pill n"><i></i>Nepažymėta ${c.none}</span>
       </div>
-      ${list.length ? `<div class="table-wrap"><table><thead><tr><th>Student</th><th>Status</th><th class="hide-sm">Note</th></tr></thead><tbody>${rows}</tbody></table></div>`
-        : `<div class="empty"><p>No students in this class yet.</p><button class="btn primary" data-act="open-import">${ICON.upload} Import students</button></div>`}
+      ${list.length ? `<div class="table-wrap"><table><thead><tr><th>Mokinys</th><th>Būsena</th><th class="hide-sm">Pastaba</th></tr></thead><tbody>${rows}</tbody></table></div>`
+        : `<div class="empty"><p>Šioje klasėje mokinių dar nėra.</p><button class="btn primary" data-act="open-import">${ICON.upload} Importuoti mokinius</button></div>`}
     </div>`;
 }
 
@@ -329,16 +359,16 @@ function renderStudents() {
     return `<tr><td><div class="who">${avatar(s)}<div><b>${esc(displayName(s))}</b><small>${esc(s.email || '')}</small></div></div></td>` +
       `<td class="hide-sm">${esc(s.parentEmail || '')}</td>` +
       `<td class="num">${st.A}</td><td class="num">${st.L}</td><td class="num">${rateBadge(st.rate)}</td>` +
-      `<td class="row-actions"><button class="btn small" data-act="edit-student" data-sid="${s.id}">Edit</button> ` +
-      `<button class="btn small danger" data-act="delete-student" data-sid="${s.id}">Delete</button></td></tr>`;
+      `<td class="row-actions"><button class="btn small" data-act="edit-student" data-sid="${s.id}">Redaguoti</button> ` +
+      `<button class="btn small danger" data-act="delete-student" data-sid="${s.id}">Ištrinti</button></td></tr>`;
   }).join('');
-  app.innerHTML = head('Students', `${all.length} in ${esc(curClass().name)}`,
-    `<button class="btn" data-act="open-import">${ICON.upload} Import</button><button class="btn primary" data-act="add-student">${ICON.plus} Add student</button>`) +
+  app.innerHTML = head('Mokiniai', `${all.length} klasėje ${esc(curClass().name)}`,
+    `<button class="btn" data-act="open-import">${ICON.upload} Importuoti</button><button class="btn primary" data-act="add-student">${ICON.plus} Pridėti mokinį</button>`) +
     `<div class="card">
-      <div class="actions" style="margin-bottom:12px"><input type="search" class="search" id="search" placeholder="Search students" value="${esc(search)}"></div>
-      ${list.length ? `<div class="table-wrap"><table><thead><tr><th>Student</th><th class="hide-sm">Parent email</th><th class="num">Absent</th><th class="num">Late</th><th class="num">Rate</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
-        : q ? '<p class="muted">No matches.</p>'
-          : `<div class="empty"><div class="big">${ICON.users}</div><h2>No students yet</h2><p>Import a class list from a spreadsheet, or add students one at a time.</p><button class="btn primary" data-act="open-import">${ICON.upload} Import students</button></div>`}
+      <div class="actions" style="margin-bottom:12px"><input type="search" class="search" id="search" placeholder="Ieškoti mokinių" value="${esc(search)}"></div>
+      ${list.length ? `<div class="table-wrap"><table><thead><tr><th>Mokinys</th><th class="hide-sm">Tėvų el. paštas</th><th class="num">Nedalyvavo</th><th class="num">Vėlavo</th><th class="num">Rodiklis</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+        : q ? '<p class="muted">Nieko nerasta.</p>'
+          : `<div class="empty"><div class="big">${ICON.users}</div><h2>Mokinių dar nėra</h2><p>Importuokite klasės sąrašą iš skaičiuoklės arba pridėkite mokinius po vieną.</p><button class="btn primary" data-act="open-import">${ICON.upload} Importuoti mokinius</button></div>`}
     </div>`;
 }
 
@@ -354,25 +384,25 @@ function renderReports() {
     const k = countDay(cid, d, list);
     return `<tr><td>${prettyDate(d)}</td><td class="num">${k.P}</td><td class="num">${k.A}</td><td class="num">${k.L}</td><td class="num">${k.E}</td></tr>`;
   }).join('');
-  app.innerHTML = head('Reports', 'Attendance totals for any date range',
-    `<button class="btn primary" data-act="export-report">Export CSV</button>`) +
-    `<div class="card"><div class="actions"><label class="muted">From <input type="date" id="repFrom" value="${repFrom}"></label><label class="muted">To <input type="date" id="repTo" value="${repTo}"></label></div></div>
-    <div class="card"><h2>By student</h2><p class="sub">Rate = (present + late) ÷ (present + late + absent). Excused days are left out.</p>
-      ${list.length ? `<div class="table-wrap"><table><thead><tr><th>Student</th><th class="num">Present</th><th class="num">Absent</th><th class="num">Late</th><th class="num">Excused</th><th class="num">Rate</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="muted">No students.</p>'}</div>
-    <div class="card"><h2>By day</h2><p class="sub">&nbsp;</p>
-      ${days.length ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th class="num">Present</th><th class="num">Absent</th><th class="num">Late</th><th class="num">Excused</th></tr></thead><tbody>${dayRows}</tbody></table></div>` : '<p class="muted">No attendance recorded in this range.</p>'}</div>`;
+  app.innerHTML = head('Ataskaitos', 'Lankomumo suvestinės pasirinktam laikotarpiui',
+    `<button class="btn primary" data-act="export-report">Eksportuoti CSV</button>`) +
+    `<div class="card"><div class="actions"><label class="muted">Nuo <input type="date" id="repFrom" value="${repFrom}"></label><label class="muted">Iki <input type="date" id="repTo" value="${repTo}"></label></div></div>
+    <div class="card"><h2>Pagal mokinį</h2><p class="sub">Rodiklis = (dalyvavo + vėlavo) ÷ (dalyvavo + vėlavo + nedalyvavo). Pateisintos dienos neįskaičiuojamos.</p>
+      ${list.length ? `<div class="table-wrap"><table><thead><tr><th>Mokinys</th><th class="num">Dalyvavo</th><th class="num">Nedalyvavo</th><th class="num">Vėlavo</th><th class="num">Pateisinta</th><th class="num">Rodiklis</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="muted">Nėra mokinių.</p>'}</div>
+    <div class="card"><h2>Pagal dieną</h2><p class="sub">&nbsp;</p>
+      ${days.length ? `<div class="table-wrap"><table><thead><tr><th>Data</th><th class="num">Dalyvavo</th><th class="num">Nedalyvavo</th><th class="num">Vėlavo</th><th class="num">Pateisinta</th></tr></thead><tbody>${dayRows}</tbody></table></div>` : '<p class="muted">Šiuo laikotarpiu lankomumo įrašų nėra.</p>'}</div>`;
 }
 
 function renderData() {
-  app.innerHTML = head('Data', 'Backups and exports') +
-    `<div class="card"><h2>Your data</h2>
-      <p class="sub">Everything is stored in this browser on this device. Download a backup regularly, and use it to move your data to another device.</p>
+  app.innerHTML = head('Duomenys', 'Atsarginės kopijos ir eksportas') +
+    `<div class="card"><h2>Jūsų duomenys</h2>
+      <p class="sub">Duomenys automatiškai saugomi serveryje po kiekvieno pakeitimo ir matomi visiems turintiems prieigą. Atsarginę kopiją vis tiek verta retkarčiais atsisiųsti.</p>
       <div class="actions">
-        <button class="btn primary" data-act="export-json">Download backup (JSON)</button>
-        <button class="btn" data-act="export-all-csv">Export all attendance (CSV)</button>
-        <label class="btn">Restore backup<input type="file" id="jsonFile" accept=".json,application/json" hidden></label>
+        <button class="btn primary" data-act="export-json">Atsisiųsti atsarginę kopiją (JSON)</button>
+        <button class="btn" data-act="export-all-csv">Eksportuoti visą lankomumą (CSV)</button>
+        <label class="btn" data-act="restore-label">Atkurti iš kopijos<input type="file" id="jsonFile" accept=".json,application/json" hidden></label>
         <span class="spacer"></span>
-        <button class="btn danger" data-act="wipe">Delete all data</button>
+        <button class="btn danger" data-act="wipe">Ištrinti visus duomenis</button>
       </div></div>`;
 }
 
@@ -380,7 +410,7 @@ function renderData() {
 const dialog = document.getElementById('studentDialog');
 const form = document.getElementById('studentForm');
 function openStudentDialog(s) {
-  document.getElementById('studentDialogTitle').textContent = s ? 'Edit student' : 'Add student';
+  document.getElementById('studentDialogTitle').textContent = s ? 'Redaguoti mokinį' : 'Pridėti mokinį';
   form.id.value = s ? s.id : '';
   form.first.value = s ? s.first : '';
   form.last.value = s ? s.last : '';
@@ -394,7 +424,7 @@ form.addEventListener('submit', () => {
     first: form.first.value.trim(), last: form.last.value.trim(), email: form.email.value.trim(),
     parentEmail: form.parentEmail.value.trim(), notes: form.notes.value.trim(),
   };
-  if (!data.first) return;
+  if (!data.first || !Auth.can('students.edit')) return;
   if (form.id.value) Object.assign(state.students.find((s) => s.id === form.id.value), data);
   else state.students.push(Object.assign({ id: uid(), classId: state.currentClassId }, data));
   save(); render();
@@ -409,21 +439,21 @@ function addStudents(items) {
 const importDlg = document.getElementById('importDialog');
 function openImport() {
   importDlg.innerHTML = `<div class="dlg">
-    <div class="dlg-head"><h3>Import students</h3><button type="button" class="icon-btn" data-act="close-import" aria-label="Close">&times;</button></div>
-    <p class="muted" style="margin-top:0">Adding to <b>${esc(curClass().name)}</b>. Works with files from Excel, Google Sheets, or any class list export.</p>
+    <div class="dlg-head"><h3>Importuoti mokinius</h3><button type="button" class="icon-btn" data-act="close-import" aria-label="Uždaryti">&times;</button></div>
+    <p class="muted" style="margin-top:0">Pridedama į <b>${esc(curClass().name)}</b>. Veikia su „Excel“, „Google Sheets“ ar bet kokiu klasės sąrašo eksportu.</p>
     <label class="drop" data-drop>
       <input type="file" id="importFile" accept=".csv,.tsv,.txt,text/csv,text/plain,text/tab-separated-values" hidden>
-      ${ICON.upload}<b>Drop a file here, or click to browse</b><span>.csv, .tsv or .txt</span>
+      ${ICON.upload}<b>Nuvilkite failą čia arba spustelėkite ir pasirinkite</b><span>.csv, .tsv arba .txt</span>
     </label>
-    <div class="divider">or paste</div>
-    <textarea id="importText" rows="5" placeholder="Paste rows copied from a spreadsheet, or one name per line:&#10;Ada Lovelace&#10;Alan Turing&#10;&#10;Or with columns:&#10;First name, Last name, Email, Parent email"></textarea>
+    <div class="divider">arba įklijuokite</div>
+    <textarea id="importText" rows="5" placeholder="Įklijuokite eilutes iš skaičiuoklės arba po vieną vardą eilutėje:&#10;Ada Lovelace&#10;Alan Turing&#10;&#10;Arba su stulpeliais:&#10;Vardas, Pavardė, El. paštas, Tėvų el. paštas"></textarea>
     <div id="importPreview"></div>
-    <label class="check"><input type="checkbox" id="importSkip" checked> Skip students already in this class</label>
-    <p class="muted" style="font-size:.8rem;margin:0">Tip: a header row (First name, Last name, Email, Parent email) is detected automatically. A single column of names also works.</p>
+    <label class="check"><input type="checkbox" id="importSkip" checked> Praleisti mokinius, kurie jau yra šioje klasėje</label>
+    <p class="muted" style="font-size:.8rem;margin:0">Patarimas: antraštės eilutė (Vardas, Pavardė, El. paštas, Tėvų el. paštas) aptinkama automatiškai. Tinka ir vienas vardų stulpelis.</p>
     <div class="dlg-actions">
-      <button type="button" class="btn small" data-act="template">Download template</button><span class="spacer"></span>
-      <button type="button" class="btn" data-act="close-import">Cancel</button>
-      <button type="button" class="btn primary" id="importGo" data-act="do-import" disabled>Import</button>
+      <button type="button" class="btn small" data-act="template">Atsisiųsti šabloną</button><span class="spacer"></span>
+      <button type="button" class="btn" data-act="close-import">Atšaukti</button>
+      <button type="button" class="btn primary" id="importGo" data-act="do-import" disabled>Importuoti</button>
     </div></div>`;
   importDlg.showModal();
 }
@@ -437,13 +467,13 @@ function updateImportPreview() {
   const box = document.getElementById('importPreview');
   const go = document.getElementById('importGo');
   go.disabled = !fresh.length;
-  go.textContent = fresh.length ? `Import ${fresh.length} student${fresh.length === 1 ? '' : 's'}` : 'Import';
+  go.textContent = fresh.length ? `Importuoti: ${fresh.length}` : 'Importuoti';
   if (!text.trim()) { box.innerHTML = ''; return; }
-  if (!items.length) { box.innerHTML = '<div class="preview"><div class="ph">No students found in this text.</div></div>'; return; }
-  box.innerHTML = `<div class="preview"><div class="ph">${items.length} row${items.length === 1 ? '' : 's'} found${dupes ? ` · ${dupes} already in class (skipped)` : ''}</div>
-    <table><thead><tr><th>First</th><th>Last</th><th>Email</th><th class="hide-sm">Parent email</th></tr></thead><tbody>
+  if (!items.length) { box.innerHTML = '<div class="preview"><div class="ph">Tekste mokinių nerasta.</div></div>'; return; }
+  box.innerHTML = `<div class="preview"><div class="ph">Rasta eilučių: ${items.length}${dupes ? ` · ${dupes} jau klasėje (praleista)` : ''}</div>
+    <table><thead><tr><th>Vardas</th><th>Pavardė</th><th>El. paštas</th><th class="hide-sm">Tėvų el. paštas</th></tr></thead><tbody>
     ${items.slice(0, 5).map((x) => `<tr><td>${esc(x.first)}</td><td>${esc(x.last)}</td><td>${esc(x.email)}</td><td class="hide-sm">${esc(x.parentEmail)}</td></tr>`).join('')}
-    ${items.length > 5 ? `<tr><td colspan="4" class="muted">…and ${items.length - 5} more</td></tr>` : ''}</tbody></table></div>`;
+    ${items.length > 5 ? `<tr><td colspan="4" class="muted">…ir dar ${items.length - 5}</td></tr>` : ''}</tbody></table></div>`;
 }
 function loadImportFile(file) {
   if (!file) return;
@@ -468,14 +498,14 @@ function doImport() {
   importDlg.close();
   view = 'students';
   render();
-  toast(`Imported ${items.length} student${items.length === 1 ? '' : 's'}`);
+  toast(`Importuota mokinių: ${items.length}`);
 }
 
 /* ---------- exports ---------- */
 function allAttendanceCSV(cid, from, to) {
   const list = state.students.filter((s) => s.classId === cid).sort((a, b) => fullName(a).localeCompare(fullName(b)));
   const days = Object.keys(state.records[cid] || {}).filter((d) => (!from || d >= from) && (!to || d <= to)).sort();
-  const lines = [['Student', ...days, 'Present', 'Absent', 'Late', 'Excused', 'Rate %'].map(csvCell).join(',')];
+  const lines = [['Mokinys', ...days, 'Dalyvavo', 'Nedalyvavo', 'Vėlavo', 'Pateisinta', 'Rodiklis %'].map(csvCell).join(',')];
   list.forEach((s) => {
     const cells = days.map((d) => getRec(cid, d, s.id).s);
     const t = stats(cid, s.id, from, to);
@@ -492,25 +522,26 @@ document.addEventListener('click', (e) => {
   if (!el) return;
   const act = el.dataset.act;
   const cid = state.currentClassId;
+  if (ACT_PERM[act] && !Auth.can(ACT_PERM[act])) { toast('Neturite teisės atlikti šio veiksmo'); return; }
   switch (act) {
-    case 'tab': view = el.dataset.view; render(); window.scrollTo(0, 0); break;
+    case 'tab': view = el.dataset.view; Auth.invalidate(); render(); window.scrollTo(0, 0); break;
     case 'go-attendance': view = 'attendance'; render(); break;
     case 'theme':
       try { localStorage.setItem(THEME_KEY, currentTheme() === 'dark' ? 'light' : 'dark'); } catch (err) { /* ignore */ }
       applyTheme(); render(); break;
     case 'new-class': {
-      const name = (prompt('Class name?') || '').trim();
+      const name = (prompt('Klasės pavadinimas?') || '').trim();
       if (!name) break;
       const c = { id: uid(), name };
       state.classes.push(c); state.currentClassId = c.id; save(); render(); break;
     }
     case 'rename-class': {
-      const c = curClass(); const name = (prompt('New name?', c.name) || '').trim();
+      const c = curClass(); const name = (prompt('Naujas pavadinimas?', c.name) || '').trim();
       if (name) { c.name = name; save(); render(); } break;
     }
     case 'delete-class': {
       const c = curClass();
-      if (!confirm(`Delete "${c.name}" with all its students and attendance?`)) break;
+      if (!confirm(`Ištrinti „${c.name}“ su visais mokiniais ir lankomumo įrašais?`)) break;
       state.classes = state.classes.filter((x) => x.id !== c.id);
       state.students = state.students.filter((s) => s.classId !== c.id);
       delete state.records[c.id];
@@ -523,7 +554,7 @@ document.addEventListener('click', (e) => {
       render(); break;
     }
     case 'all-present': classStudents().forEach((s) => { if (!getRec(cid, attDate, s.id).s) setRec(cid, attDate, s.id, { s: 'P' }); }); render(); break;
-    case 'clear-day': if (confirm('Clear all marks for this day?')) { delete (state.records[cid] || {})[attDate]; save(); render(); } break;
+    case 'clear-day': if (confirm('Išvalyti visas šios dienos žymas?')) { delete (state.records[cid] || {})[attDate]; save(); render(); } break;
     case 'prev-day': attDate = shiftDate(attDate, -1); render(); break;
     case 'next-day': attDate = shiftDate(attDate, 1); render(); break;
     case 'today': attDate = today(); render(); break;
@@ -533,10 +564,10 @@ document.addEventListener('click', (e) => {
     case 'open-import': openImport(); break;
     case 'close-import': importDlg.close(); break;
     case 'do-import': doImport(); break;
-    case 'template': download('students-template.csv', 'First name,Last name,Email,Parent email\nAda,Lovelace,ada@example.com,parent@example.com\nAlan,Turing,,\n'); break;
+    case 'template': download('students-template.csv', 'Vardas,Pavardė,El. paštas,Tėvų el. paštas\nAda,Lovelace,ada@example.com,tevai@example.com\nAlan,Turing,,\n'); break;
     case 'delete-student': {
       const s = state.students.find((x) => x.id === el.dataset.sid);
-      if (!confirm(`Delete ${displayName(s)}?`)) break;
+      if (!confirm(`Ištrinti ${displayName(s)}?`)) break;
       state.students = state.students.filter((x) => x.id !== s.id);
       for (const d in state.records[cid] || {}) delete state.records[cid][d][s.id];
       save(); render(); break;
@@ -544,15 +575,16 @@ document.addEventListener('click', (e) => {
     case 'export-report': download(`attendance-${curClass().name.replace(/\W+/g, '_')}-${repFrom}_to_${repTo}.csv`, allAttendanceCSV(cid, repFrom, repTo)); break;
     case 'export-all-csv': {
       const out = [];
-      state.classes.forEach((c) => { out.push('Class: ' + c.name, allAttendanceCSV(c.id), ''); });
+      state.classes.forEach((c) => { out.push('Klasė: ' + c.name, allAttendanceCSV(c.id), ''); });
       download('attendance-all.csv', out.join('\n')); break;
     }
     case 'export-json': download(`attendance-backup-${today()}.json`, JSON.stringify(state, null, 2), 'application/json'); break;
     case 'wipe':
-      if (confirm('Delete ALL classes, students and attendance from this browser?') && confirm('This cannot be undone. Really delete everything?')) {
+      if (confirm('Ištrinti VISAS klases, mokinius ir lankomumą iš serverio (visiems vartotojams)?') && confirm('Šio veiksmo atšaukti negalima. Tikrai viską ištrinti?')) {
         state = { classes: [], students: [], records: {}, currentClassId: null }; save(); render();
       }
       break;
+    default: Auth.act(act, el);
   }
 });
 
@@ -564,16 +596,16 @@ document.addEventListener('change', (e) => {
   else if (t.id === 'repTo') { repTo = t.value || repTo; render(); }
   else if (t.id === 'importFile') loadImportFile(t.files && t.files[0]);
   else if (t.id === 'importSkip') updateImportPreview();
-  else if (t.dataset && t.dataset.note) setRec(state.currentClassId, attDate, t.dataset.note, { n: t.value.trim() });
-  else if (t.id === 'jsonFile' && t.files[0]) {
+  else if (t.dataset && t.dataset.note) { if (Auth.can('attendance.mark')) setRec(state.currentClassId, attDate, t.dataset.note, { n: t.value.trim() }); }
+  else if (t.id === 'jsonFile' && t.files[0] && Auth.can('data.restore')) {
     t.files[0].text().then((text) => {
       try {
         const s = JSON.parse(text);
         if (!s || !Array.isArray(s.classes) || !Array.isArray(s.students) || typeof s.records !== 'object') throw new Error('bad');
-        if (!confirm('Replace everything in this browser with the backup?')) return;
+        if (!confirm('Pakeisti VISUS serverio duomenis kopijos duomenimis?')) return;
         state = s; if (!state.currentClassId && state.classes[0]) state.currentClassId = state.classes[0].id;
         save(); render();
-      } catch (err) { alert('That file is not a valid backup.'); }
+      } catch (err) { alert('Tai nėra tinkama atsarginė kopija.'); }
     });
   }
 });
@@ -604,5 +636,4 @@ document.addEventListener('drop', (e) => {
 });
 
 applyTheme();
-if (!state.currentClassId && state.classes[0]) state.currentClassId = state.classes[0].id;
-render();
+Auth.init().then((ok) => { if (ok) render(); });
