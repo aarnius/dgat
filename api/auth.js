@@ -1,4 +1,4 @@
-import { db, handler, HttpError, getUser, userById, publicUser, hashPw, checkPw, DUMMY_PW, sessionCookie, clearCookie, requireUser, newId, USERNAME_RE, str } from '../lib/server.js';
+import { db, handler, HttpError, getUser, userById, publicUser, hashPw, checkPw, DUMMY_PW, sessionCookie, clearCookie, requireUser, newId, USERNAME_RE, str, logEvent } from '../lib/server.js';
 
 export default handler(async (req, res, body) => {
   const sql = db();
@@ -19,6 +19,7 @@ export default handler(async (req, res, body) => {
         SELECT ${id}, ${name}, ${username}, 'superadmin', ${hash} WHERE NOT EXISTS (SELECT 1 FROM users) RETURNING id`;
       if (!rows.length) throw new HttpError(403, 'Pradinė paskyra jau sukurta.');
       res.setHeader('Set-Cookie', sessionCookie(id, false));
+      await logEvent(sql, { id, name }, 'auth', 'Sukurta pradinė superadministratoriaus paskyra');
       return { user: publicUser(await userById(id)) };
     }
 
@@ -26,24 +27,29 @@ export default handler(async (req, res, body) => {
       const username = str(body.username, 40).toLowerCase(), pw = String(body.password || '');
       const [lock] = await sql`SELECT GREATEST(0, CEIL(EXTRACT(EPOCH FROM (locked_until - now()))))::int AS wait FROM login_attempts WHERE key = ${username}`;
       if (lock && lock.wait > 0) throw new HttpError(429, `Per daug bandymų. Palaukite ${lock.wait} s.`);
-      const [u] = await sql`SELECT id, pw, active FROM users WHERE username = ${username}`;
+      const [u] = await sql`SELECT id, name, pw, active FROM users WHERE username = ${username}`;
       const ok = await checkPw(pw, u ? u.pw : DUMMY_PW);
       if (!u || !ok) {
         await sql`INSERT INTO login_attempts (key, count) VALUES (${username}, 1)
           ON CONFLICT (key) DO UPDATE SET count = login_attempts.count + 1,
           locked_until = CASE WHEN login_attempts.count + 1 >= 5 THEN now() + interval '60 seconds' ELSE login_attempts.locked_until END`;
+        await logEvent(sql, u ? { id: u.id, name: u.name } : { name: username }, 'auth', `Nesėkmingas prisijungimas: ${username}`);
         throw new HttpError(401, 'Neteisingas vartotojo vardas arba slaptažodis.');
       }
-      if (!u.active) throw new HttpError(403, 'Ši paskyra išjungta.');
+      if (!u.active) { await logEvent(sql, { id: u.id, name: u.name }, 'auth', `Bandymas prisijungti prie išjungtos paskyros: ${username}`); throw new HttpError(403, 'Ši paskyra išjungta.'); }
       await sql`DELETE FROM login_attempts WHERE key = ${username}`;
       const cookie = sessionCookie(u.id, !!body.remember);
       res.setHeader('Set-Cookie', cookie);
+      await logEvent(sql, { id: u.id, name: u.name }, 'auth', 'Prisijungė', [body.remember ? 'Likti prisijungus: taip' : 'Likti prisijungus: ne']);
       return { user: publicUser(await userById(u.id)) };
     }
 
-    case 'logout':
+    case 'logout': {
+      const who = await getUser(req).catch(() => null);
+      if (who) await logEvent(sql, who, 'auth', 'Atsijungė');
       res.setHeader('Set-Cookie', clearCookie());
       return { ok: true };
+    }
 
     case 'account': {
       const me = requireUser(await getUser(req));
@@ -61,6 +67,7 @@ export default handler(async (req, res, body) => {
       } else {
         await sql`UPDATE users SET name = ${name}, username = ${username} WHERE id = ${me.id}`;
       }
+      await logEvent(sql, me, 'auth', 'Pakeisti savo paskyros duomenys', pw ? ['Pakeistas slaptažodis'] : []);
       return { user: publicUser(await getUser(req)) };
     }
 

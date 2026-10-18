@@ -1,4 +1,4 @@
-import { db, handler, HttpError, getUser, can, requireUser, requirePerm, hashPw, newId, USERNAME_RE, str, BUILTIN_PERMS } from '../lib/server.js';
+import { db, handler, HttpError, getUser, can, requireUser, requirePerm, hashPw, newId, USERNAME_RE, str, BUILTIN_PERMS, logEvent } from '../lib/server.js';
 
 async function snapshot(sql) {
   const [users, roles, customPerms, classes] = await Promise.all([
@@ -26,7 +26,7 @@ export default handler(async (req, res, body) => {
       const id = str(body.id, 40), name = str(body.name, 100), username = str(body.username, 40).toLowerCase();
       const roleId = str(body.roleId, 40), pw = String(body.password || ''), active = body.active !== false;
       if (!name || !USERNAME_RE.test(username)) throw new HttpError(400, 'Įveskite vardą ir vartotojo vardą (bent 3 simboliai, be tarpų).');
-      const [role] = await sql`SELECT id FROM roles WHERE id = ${roleId}`;
+      const [role] = await sql`SELECT id, name FROM roles WHERE id = ${roleId}`;
       if (!role) throw new HttpError(400, 'Pasirinkite rolę.');
       if (!id && pw.length < 8) throw new HttpError(400, 'Slaptažodis turi būti bent 8 simbolių.');
       if (id && pw && pw.length < 8) throw new HttpError(400, 'Slaptažodis per trumpas (bent 8 simboliai).');
@@ -46,6 +46,9 @@ export default handler(async (req, res, body) => {
         const want = body.classIds.map((x) => str(x, 40)).filter(Boolean);
         classIds = (await sql`SELECT id FROM classes WHERE id = ANY(${want}::text[])`).map((x) => x.id);
       }
+      const info = [`Rolė: ${role.name}`, active ? 'Paskyra aktyvi' : 'Paskyra išjungta'];
+      if (pw) info.push('Nustatytas naujas slaptažodis');
+      await logEvent(sql, me, 'admin', `Vartotojas „${name}“ (${username}) ${existing ? 'atnaujintas' : 'sukurtas'}`, info);
       if (existing) {
         await sql`UPDATE users SET name=${name}, username=${username}, role_id=${roleId}, active=${active} WHERE id=${id}`;
         if (pw) await sql`UPDATE users SET pw=${await hashPw(pw)} WHERE id=${id}`;
@@ -59,12 +62,13 @@ export default handler(async (req, res, body) => {
     case 'user-delete': {
       requirePerm(me, 'users.manage');
       const id = str(body.id, 40);
-      const [u] = await sql`SELECT id, role_id FROM users WHERE id = ${id}`;
+      const [u] = await sql`SELECT id, name, username, role_id FROM users WHERE id = ${id}`;
       if (!u) return snapshot(sql);
       if (id === me.id) throw new HttpError(400, 'Negalite ištrinti savo paskyros.');
       if (u.role_id === 'superadmin' && !isSuper) throw new HttpError(403, 'Tik superadministratorius gali valdyti superadministratorius.');
       if (u.role_id === 'superadmin' && (await superCount(sql, id)) === 0) throw new HttpError(400, 'Negalite ištrinti paskutinio superadministratoriaus.');
       await sql`DELETE FROM users WHERE id = ${id}`;
+      await logEvent(sql, me, 'admin', `Ištrintas vartotojas „${u.name}“ (${u.username})`);
       return snapshot(sql);
     }
 
@@ -75,6 +79,7 @@ export default handler(async (req, res, body) => {
       const [dupe] = await sql`SELECT id FROM roles WHERE lower(name) = ${name.toLowerCase()}`;
       if (dupe) throw new HttpError(400, 'Tokia rolė jau yra.');
       await sql`INSERT INTO roles (id, name, perms) VALUES (${newId('r')}, ${name}, '[]'::jsonb)`;
+      await logEvent(sql, me, 'admin', `Sukurta rolė „${name}“`);
       return snapshot(sql);
     }
 
@@ -82,7 +87,9 @@ export default handler(async (req, res, body) => {
       requirePerm(me, 'roles.manage');
       const name = str(body.name, 60), id = str(body.id, 40);
       if (!name) throw new HttpError(400, 'Įveskite rolės pavadinimą.');
+      const [oldR] = await sql`SELECT name FROM roles WHERE id = ${id}`;
       await sql`UPDATE roles SET name = ${name} WHERE id = ${id}`;
+      if (oldR && oldR.name !== name) await logEvent(sql, me, 'admin', `Rolė „${oldR.name}“ pervadinta į „${name}“`);
       return snapshot(sql);
     }
 
@@ -91,7 +98,9 @@ export default handler(async (req, res, body) => {
       const id = str(body.id, 40);
       const [inUse] = await sql`SELECT 1 AS x FROM users WHERE role_id = ${id} LIMIT 1`;
       if (inUse) throw new HttpError(400, 'Pirmiausia perkelkite šios rolės vartotojus į kitą rolę.');
+      const [delR] = await sql`SELECT name FROM roles WHERE id = ${id} AND NOT system`;
       await sql`DELETE FROM roles WHERE id = ${id} AND NOT system`;
+      if (delR) await logEvent(sql, me, 'admin', `Ištrinta rolė „${delR.name}“`);
       return snapshot(sql);
     }
 
@@ -106,6 +115,8 @@ export default handler(async (req, res, body) => {
       const set = new Set(role.perms || []);
       if (on) set.add(perm); else set.delete(perm);
       await sql`UPDATE roles SET perms = ${JSON.stringify([...set])}::jsonb WHERE id = ${id}`;
+      const [role2] = await sql`SELECT name FROM roles WHERE id = ${id}`;
+      await logEvent(sql, me, 'admin', `Rolė „${role2.name}“: leidimas ${custom ? custom.key : perm} ${on ? 'įjungtas' : 'išjungtas'}`);
       return snapshot(sql);
     }
 
@@ -118,12 +129,14 @@ export default handler(async (req, res, body) => {
       let key = 'custom.' + slug, n = 2;
       while (taken.has(key)) key = 'custom.' + slug + '.' + n++;
       await sql`INSERT INTO custom_perms (key, label) VALUES (${key}, ${label})`;
+      await logEvent(sql, me, 'admin', `Pridėtas leidimas „${label}“`);
       return { ...(await snapshot(sql)), key };
     }
 
     case 'perm-delete': {
       requirePerm(me, 'roles.manage');
       const key = str(body.key, 120);
+      await logEvent(sql, me, 'admin', `Pašalintas leidimas ${key}`);
       await sql.transaction([
         sql`DELETE FROM custom_perms WHERE key = ${key}`,
         sql`UPDATE roles SET perms = perms - ${key}::text`,

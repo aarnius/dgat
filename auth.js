@@ -7,6 +7,7 @@ const PERMS = [
   { g: 'Komitetai', items: [['classes.all', 'Matyti visus komitetus (kitaip – tik vartotojui priskirtus)'], ['classes.manage', 'Kurti, pervadinti ir ištrinti komitetus']] },
   { g: 'Ataskaitos', items: [['reports.view', 'Matyti ataskaitas'], ['reports.export', 'Eksportuoti ataskaitas (CSV)']] },
   { g: 'Duomenys', items: [['data.view', 'Atidaryti skiltį „Duomenys“'], ['data.backup', 'Atsisiųsti atsarginę kopiją'], ['data.restore', 'Atkurti iš kopijos'], ['data.wipe', 'Ištrinti visus duomenis']] },
+  { g: 'LOG (pakeitimų istorija)', items: [['logs.view', 'Matyti LOG'], ['logs.undo', 'Atšaukti pakeitimus (Undo)'], ['logs.clear', 'Valyti LOG']] },
   { g: 'Administravimas', items: [['users.manage', 'Valdyti vartotojus'], ['roles.manage', 'Valdyti roles ir leidimus']] },
 ];
 

@@ -2,6 +2,14 @@
 const Sync = (() => {
   const CUR_KEY = 'attendance-current-class';
   const empty = () => ({ classes: [], students: [], records: {}, currentClassId: null });
+  let tagText = '';
+  /* Žyma, kuri bus įrašyta į LOG prie kito išsaugojimo (pvz. „Atkurta iš kopijos“). */
+  const tag = (t) => { tagText = t || ''; };
+  const nest = (list) => {
+    const recs = {};
+    list.forEach((x) => { ((recs[x.c] = recs[x.c] || {})[x.d] = recs[x.c][x.d] || {})[x.sid] = { s: x.s, n: x.n }; });
+    return recs;
+  };
   let snap = empty(), timer = null, retry = null, busy = false, dirty = false, hideT = null;
   const clone = (x) => JSON.parse(JSON.stringify(x));
 
@@ -60,7 +68,7 @@ const Sync = (() => {
         dirty = false;
         const next = clone(state);
         const ops = diff(snap, next);
-        if (!isEmpty(ops)) await api('/api/state', { ops });
+        if (!isEmpty(ops)) { const t = tagText; await api('/api/state', t ? { ops, tag: t } : { ops }); if (tagText === t) tagText = ''; }
         snap = next;
       }
       setStatus('saved', 'Išsaugota ✓');
@@ -79,8 +87,7 @@ const Sync = (() => {
   /* ---------- gavimas iš serverio ---------- */
   async function pull() {
     const r = await api('/api/state');
-    const recs = {};
-    r.records.forEach((x) => { ((recs[x.c] = recs[x.c] || {})[x.d] = recs[x.c][x.d] || {})[x.sid] = { s: x.s, n: x.n }; });
+    const recs = nest(r.records);
     const next = { classes: r.classes, students: r.students.map(normStudent), records: recs, currentClassId: null };
     const changed = signature(next) !== signature(state);
     let cur = null;
@@ -122,12 +129,14 @@ const Sync = (() => {
 
   function reset() {
     clearTimeout(timer); clearTimeout(retry);
-    dirty = false; snap = empty(); state = empty(); setStatus('', '');
+    dirty = false; tagText = ''; snap = empty(); state = empty(); setStatus('', '');
+    if (typeof Logs !== 'undefined') Logs.reset(true);
+    if (typeof Backups !== 'undefined') Backups.reset(true);
   }
 
   window.addEventListener('beforeunload', (e) => { if (dirty || busy) { e.preventDefault(); e.returnValue = ''; } });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) softPull(); });
   setInterval(softPull, 20000);
 
-  return { queue, flush, pull, softPull, migrateLegacy, reset, diff, isEmpty };
+  return { queue, flush, pull, softPull, migrateLegacy, reset, diff, isEmpty, tag, nest };
 })();

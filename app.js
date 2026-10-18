@@ -1,5 +1,5 @@
 /* Attendance Tracker - single-page app, data stored in this browser (localStorage). */
-const APP_VERSION = '7 · Keli komitetai'; // rodoma skiltyje „Duomenys“ ir prisijungimo lange
+const APP_VERSION = '8 · LOG, Undo, kopijos, kortelės'; // rodoma skiltyje „Duomenys“ ir prisijungimo lange
 const KEY = 'attendance-tracker-v1';
 const THEME_KEY = 'attendance-theme';
 const STATUS = {
@@ -21,6 +21,9 @@ const ICON = {
   shield: svg('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>'),
   book: svg('<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>'),
   moon: svg('<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>'),
+  log: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
+  print: svg('<path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v8H6z"/>'),
+  up: svg('<path d="M12 19V5"/><path d="M5 12l7-7 7 7"/>'),
   sun: svg('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
 };
 
@@ -30,6 +33,8 @@ let attDate = today();
 let search = '';
 let repFrom = today().slice(0, 8) + '01';
 let repTo = today();
+let repMode = 'com', repGrade = ''; // ataskaitos: pagal komitetą arba mokinio klasę
+let sel = new Set(), visIds = []; // masinis mokinių žymėjimas
 
 const app = document.getElementById('app');
 const side = document.getElementById('side');
@@ -92,6 +97,27 @@ function toast(msg) {
 
 /* Mokinys gali priklausyti keliems komitetams (classIds). Senuose duomenyse buvo vienas classId. */
 const normStudent = (s) => Object.assign({}, s, { classIds: Array.isArray(s.classIds) ? s.classIds.slice() : (s.classId ? [s.classId] : []) });
+/* Pakeičia mokinio komitetus; pašalintų komitetų lankomumo žymos tam mokiniui išmetamos (serveris daro tą patį). */
+function setStudentClasses(s, ids) {
+  (s.classIds || []).filter((c) => !ids.includes(c)).forEach((c) => {
+    const days = state.records[c] || {};
+    for (const d in days) { delete days[d][s.id]; if (!Object.keys(days[d]).length) delete days[d]; }
+  });
+  s.classIds = ids.slice();
+}
+function logClient(what, info) { api('/api/log', { action: 'event', what, info: info || '' }).catch(() => { /* ignore */ }); }
+function printPage(what, info) {
+  document.body.classList.add('print-page');
+  logClient(what, info);
+  setTimeout(() => window.print(), 50);
+}
+window.addEventListener('afterprint', () => document.body.classList.remove('print-page', 'print-card'));
+/* Atkuria visą būseną iš kopijos (failo arba serverio) ir išsaugo serveryje; LOG įraše matysis žyma. */
+function restoreState(s, label) {
+  state = { classes: s.classes, students: s.students.map(normStudent), records: Array.isArray(s.records) ? Sync.nest(s.records) : s.records, currentClassId: null };
+  state.currentClassId = state.classes[0] ? state.classes[0].id : null;
+  Sync.tag(label); save(); render(); toast('Duomenys atkurti');
+}
 function wipeStudentRecords(sid) {
   for (const c in state.records) { for (const d in state.records[c]) delete state.records[c][d][sid]; }
 }
@@ -231,8 +257,8 @@ function parseImport(text) {
 const keyOf = (s) => (s.first + '|' + s.last).toLowerCase().trim();
 
 /* ---------- rendering ---------- */
-const NAV = [['dashboard', 'Apžvalga', ICON.dash], ['attendance', 'Lankomumas', ICON.check], ['students', 'Mokiniai', ICON.users], ['allstudents', 'Visi mokiniai', ICON.users], ['classes', 'Komitetai', ICON.book], ['reports', 'Ataskaitos', ICON.chart], ['data', 'Duomenys', ICON.db], ['users', 'Vartotojai', ICON.users], ['roles', 'Rolės', ICON.shield]];
-const VIEW_PERM = { dashboard: 'dashboard.view', attendance: 'attendance.view', students: 'students.view', allstudents: 'students.view', classes: 'classes.manage', reports: 'reports.view', data: 'data.view', users: 'users.manage', roles: 'roles.manage' };
+const NAV = [['dashboard', 'Apžvalga', ICON.dash], ['attendance', 'Lankomumas', ICON.check], ['students', 'Mokiniai', ICON.users], ['allstudents', 'Visi mokiniai', ICON.users], ['classes', 'Komitetai', ICON.book], ['reports', 'Ataskaitos', ICON.chart], ['data', 'Duomenys', ICON.db], ['logs', 'LOG', ICON.log], ['users', 'Vartotojai', ICON.users], ['roles', 'Rolės', ICON.shield]];
+const VIEW_PERM = { dashboard: 'dashboard.view', attendance: 'attendance.view', students: 'students.view', allstudents: 'students.view', classes: 'classes.manage', reports: 'reports.view', data: 'data.view', logs: 'logs.view', users: 'users.manage', roles: 'roles.manage' };
 const ACT_PERM = {
   'new-class': 'classes.manage', 'rename-class': 'classes.manage', 'delete-class': 'classes.manage',
   mark: 'attendance.mark', 'all-present': 'attendance.mark', 'clear-day': 'attendance.mark',
@@ -240,7 +266,8 @@ const ACT_PERM = {
   'open-import': 'students.import', 'do-import': 'students.import', template: 'students.import',
   'export-report': 'reports.export', 'export-all-csv': 'data.backup', 'export-json': 'data.backup',
   'restore-label': 'data.restore', wipe: 'data.wipe',
-  'rename-class-id': 'classes.manage', 'delete-class-id': 'classes.manage', 'open-promote': 'classes.manage', 'do-promote': 'classes.manage',
+  'rename-class-id': 'classes.manage', 'delete-class-id': 'classes.manage', 'open-promote': 'students.edit', 'do-promote': 'students.edit', 'open-bulk': 'students.edit', 'do-bulk': 'students.edit',
+  'backup-create': 'data.backup', 'backup-download': 'data.backup', 'backup-restore': 'data.restore', 'log-undo': 'logs.undo', 'log-clear': 'logs.clear', 'log-clear-do': 'logs.clear',
 };
 function applyPerms() {
   document.querySelectorAll('[data-act]').forEach((el) => {
@@ -285,13 +312,13 @@ function render() {
 function renderInner() {
   const y = window.scrollY;
   renderSide();
-  if (!state.classes.length && !['data', 'users', 'roles', 'classes'].includes(view)) {
+  if (!state.classes.length && !['data', 'logs', 'users', 'roles', 'classes'].includes(view)) {
     app.innerHTML = `<div class="card empty"><div class="big">${svg('<path d="M20 6 9 17l-5-5"/>', 30)}</div><h2>Sveiki atvykę į Lankomumo žurnalą</h2>
       <p>${Auth.can('classes.manage') ? 'Sukurkite pirmą komitetą, tada pridėkite mokinius po vieną arba importuokite visą sąrašą per kelias sekundes.' : 'Jums dar nepriskirtas nė vienas komitetas. Kreipkitės į administratorių.'}</p>
       <button class="btn primary" data-act="new-class">${ICON.plus} Sukurti komitetą</button></div>`;
     return;
   }
-  ({ dashboard: renderDashboard, students: renderStudents, allstudents: renderAllStudents, attendance: renderAttendance, reports: renderReports, data: renderData, classes: renderClasses, users: Auth.renderUsers, roles: Auth.renderRoles })[view]();
+  ({ dashboard: renderDashboard, students: renderStudents, allstudents: renderAllStudents, attendance: renderAttendance, reports: renderReports, data: renderData, logs: Logs.render, classes: renderClasses, users: Auth.renderUsers, roles: Auth.renderRoles })[view]();
   window.scrollTo(0, y);
 }
 
@@ -349,12 +376,12 @@ function renderAttendance() {
     const r = getRec(cid, attDate, s.id);
     const btns = Object.keys(STATUS).map((k) =>
       `<button class="${STATUS[k].cls} ${r.s === k ? 'on' : ''}" title="${STATUS[k].label}" data-act="mark" data-sid="${s.id}" data-s="${k}"><span class="lg">${STATUS[k].label}</span><span class="sm">${STATUS[k].short}</span></button>`).join('');
-    return `<tr><td><div class="who">${avatar(s)}<div><b>${esc(displayName(s))}</b>${s.grade ? `<small>${esc(s.grade)} kl.</small>` : ''}</div></div></td><td><div class="seg">${btns}</div></td>` +
+    return `<tr><td><div class="who">${avatar(s)}<div><b class="name-link" data-act="student-card" data-sid="${s.id}" role="button" tabindex="0">${esc(displayName(s))}</b>${s.grade ? `<small>${esc(s.grade)} kl.</small>` : ''}</div></div></td><td><div class="seg">${btns}</div></td>` +
       `<td class="hide-sm"><input class="note-input" data-note="${s.id}" placeholder="Pridėti pastabą" value="${esc(r.n)}"></td></tr>`;
   }).join('');
   app.innerHTML = head('Lankomumas', prettyDate(attDate),
-    `<button class="btn" data-act="clear-day">Išvalyti dieną</button><button class="btn primary" data-act="all-present">${ICON.check} Visi dalyvavo</button>`) +
-    `<div class="card">
+    `<button class="btn" data-act="print-page" data-what="print-day">${ICON.print} Spausdinti</button><button class="btn" data-act="clear-day">Išvalyti dieną</button><button class="btn primary" data-act="all-present">${ICON.check} Visi dalyvavo</button>`) +
+    `<div class="card"><div class="print-only print-title"><h2>Lankomumas – ${esc(curClass().name)}</h2><p>${prettyDate(attDate)}</p></div>
       <div class="date-bar">
         <button class="icon-btn" data-act="prev-day" aria-label="Ankstesnė diena">&larr;</button>
         <input type="date" id="attDate" value="${attDate}">
@@ -370,14 +397,25 @@ function renderAttendance() {
     </div>`;
 }
 
+const canSel = () => Auth.can('students.edit');
+const selTh = () => (canSel() ? `<th class="selcol"><input type="checkbox" data-selall aria-label="Pažymėti visus" ${visIds.length && visIds.every((id) => sel.has(id)) ? 'checked' : ''}></th>` : '');
+const selTd = (s) => (canSel() ? `<td class="selcol"><input type="checkbox" data-sel="${s.id}" aria-label="Pažymėti" ${sel.has(s.id) ? 'checked' : ''}></td>` : '');
+function bulkBar() {
+  if (!canSel()) return '';
+  const ids = new Set(state.students.map((x) => x.id));
+  sel = new Set([...sel].filter((id) => ids.has(id)));
+  return `<div class="bulkbar" ${sel.size ? '' : 'hidden'}><span>Pažymėta: <b>${sel.size}</b></span><button class="btn small primary" data-act="open-bulk">Masinis perkėlimas…</button><button class="btn small" data-act="sel-clear">Atžymėti</button></div>`;
+}
+
 function renderStudents() {
   const cid = state.currentClassId;
   const q = search.trim().toLowerCase();
   const all = classStudents();
   const list = all.filter((s) => !q || (displayName(s) + ' ' + (s.email || '') + ' ' + (s.parentEmail || '')).toLowerCase().includes(q));
+  visIds = list.map((x) => x.id);
   const rows = list.map((s) => {
     const st = stats(cid, s.id);
-    return `<tr><td><div class="who">${avatar(s)}<div><b>${esc(displayName(s))}</b><small>${esc(s.email || '')}</small></div></div></td>` +
+    return `<tr>${selTd(s)}<td><div class="who">${avatar(s)}<div><b class="name-link" data-act="student-card" data-sid="${s.id}" role="button" tabindex="0">${esc(displayName(s))}</b><small>${esc(s.email || '')}</small></div></div></td>` +
       `<td>${esc(s.grade || '')}</td><td class="hide-sm">${esc(s.parentEmail || '')}</td>` +
       `<td class="num">${st.A}</td><td class="num">${st.L}</td><td class="num">${rateBadge(st.rate)}</td>` +
       `<td class="row-actions"><button class="btn small" data-act="edit-student" data-sid="${s.id}">Redaguoti</button> ` +
@@ -387,7 +425,8 @@ function renderStudents() {
     `<button class="btn" data-act="open-import">${ICON.upload} Importuoti</button><button class="btn primary" data-act="add-student">${ICON.plus} Pridėti mokinį</button>`) +
     `<div class="card">
       <div class="actions" style="margin-bottom:12px"><input type="search" class="search" id="search" placeholder="Ieškoti mokinių" value="${esc(search)}"></div>
-      ${list.length ? `<div class="table-wrap"><table><thead><tr><th>Mokinys</th><th>Klasė</th><th class="hide-sm">Tėvų el. paštas</th><th class="num">Nedalyvavo</th><th class="num">Vėlavo</th><th class="num">Rodiklis</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+      ${bulkBar()}
+      ${list.length ? `<div class="table-wrap"><table><thead><tr>${selTh()}<th>Mokinys</th><th>Klasė</th><th class="hide-sm">Tėvų el. paštas</th><th class="num">Nedalyvavo</th><th class="num">Vėlavo</th><th class="num">Rodiklis</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
         : q ? '<p class="muted">Nieko nerasta.</p>'
           : `<div class="empty"><div class="big">${ICON.users}</div><h2>Mokinių dar nėra</h2><p>Importuokite komiteto sąrašą iš skaičiuoklės arba pridėkite mokinius po vieną.</p><button class="btn primary" data-act="open-import">${ICON.upload} Importuoti mokinius</button></div>`}
     </div>`;
@@ -396,9 +435,9 @@ function renderStudents() {
 /* ---------- visi mokiniai iš visų komitetų ---------- */
 let allQ = '', allCom = '', allGrade = '';
 const gradeList = () => [...new Set(state.students.map((s) => (s.grade || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'lt', { numeric: true }));
-function statsAll(s) {
+function statsAll(s, from, to) {
   const t = { P: 0, A: 0, L: 0, E: 0 };
-  (s.classIds || []).forEach((c) => { const x = stats(c, s.id); t.P += x.P; t.A += x.A; t.L += x.L; t.E += x.E; });
+  (s.classIds || []).forEach((c) => { const x = stats(c, s.id, from, to); t.P += x.P; t.A += x.A; t.L += x.L; t.E += x.E; });
   const den = t.P + t.L + t.A;
   t.rate = den ? Math.round(((t.P + t.L) / den) * 100) : null;
   return t;
@@ -415,58 +454,108 @@ function renderAllStudents() {
       && (!allGrade || (allGrade === '-' ? !s.grade : s.grade === allGrade))
       && (!q || (displayName(s) + ' ' + (s.grade || '') + ' ' + comNames(s) + ' ' + (s.email || '') + ' ' + (s.parentEmail || '')).toLowerCase().includes(q)))
     .sort((a, b) => fullName(a).localeCompare(fullName(b), 'lt'));
+  visIds = list.map((x) => x.id);
   const rows = list.map((s) => {
     const st = statsAll(s);
-    return `<tr><td><div class="who">${avatar(s)}<div><b>${esc(displayName(s))}</b><small>${esc(s.email || '')}</small></div></div></td>` +
+    return `<tr>${selTd(s)}<td><div class="who">${avatar(s)}<div><b class="name-link" data-act="student-card" data-sid="${s.id}" role="button" tabindex="0">${esc(displayName(s))}</b><small>${esc(s.email || '')}</small></div></div></td>` +
       `<td>${esc(s.grade || '–')}</td><td>${esc(comNames(s) || '–')}</td>` +
       `<td class="hide-sm">${esc(s.parentEmail || '')}</td><td class="num">${st.A}</td><td class="num">${rateBadge(st.rate)}</td>` +
       `<td class="row-actions"><button class="btn small" data-act="edit-student" data-sid="${s.id}">Redaguoti</button></td></tr>`;
   }).join('');
   const opt = (v, l, cur) => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${esc(l)}</option>`;
-  app.innerHTML = head('Visi mokiniai', `${list.length} iš ${state.students.length} mokinių visuose komitetuose`) +
+  app.innerHTML = head('Visi mokiniai', `${list.length} iš ${state.students.length} mokinių visuose komitetuose`,
+    `<button class="btn" data-act="open-promote">${ICON.up} Perkelti klases į kitus metus</button>`) +
     `<div class="card">
       <div class="actions" style="margin-bottom:12px">
         <input type="search" class="search" id="allSearch" placeholder="Ieškoti mokinių" value="${esc(allQ)}">
         <select id="allCom" aria-label="Komitetas">${opt('', 'Visi komitetai', allCom)}${state.classes.slice().sort(byClassName).map((c) => opt(c.id, c.name, allCom)).join('')}</select>
         <select id="allGrade" aria-label="Klasė">${opt('', 'Visos klasės', allGrade)}${grades.map((g) => opt(g, g, allGrade)).join('')}${opt('-', 'Be klasės', allGrade)}</select>
       </div>
-      ${list.length ? `<div class="table-wrap"><table><thead><tr><th>Mokinys</th><th>Klasė</th><th>Komitetai</th><th class="hide-sm">Tėvų el. paštas</th><th class="num">Nedalyvavo</th><th class="num">Rodiklis</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+      ${bulkBar()}
+      ${list.length ? `<div class="table-wrap"><table><thead><tr>${selTh()}<th>Mokinys</th><th>Klasė</th><th>Komitetai</th><th class="hide-sm">Tėvų el. paštas</th><th class="num">Nedalyvavo</th><th class="num">Rodiklis</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
         : '<p class="muted">Mokinių nerasta.</p>'}
     </div>`;
 }
 
+function reportData() {
+  const inR = (d) => d >= repFrom && d <= repTo;
+  const dayMap = new Map();
+  let list, getStats, title;
+  if (repMode === 'grade') {
+    const grades = gradeList();
+    if (!repGrade || (repGrade !== '-' && !grades.includes(repGrade))) repGrade = grades[0] || '-';
+    list = state.students.filter((s) => (repGrade === '-' ? !s.grade : s.grade === repGrade)).sort((a, b) => fullName(a).localeCompare(fullName(b), 'lt'));
+    getStats = (s) => statsAll(s, repFrom, repTo);
+    list.forEach((s) => (s.classIds || []).forEach((cid) => {
+      const recs = state.records[cid] || {};
+      for (const d in recs) {
+        if (!inR(d)) continue;
+        const r = recs[d][s.id];
+        if (r && r.s) { const k = dayMap.get(d) || { P: 0, A: 0, L: 0, E: 0 }; k[r.s]++; dayMap.set(d, k); }
+      }
+    }));
+    title = repGrade === '-' ? 'Mokiniai be klasės' : repGrade + ' klasė';
+  } else {
+    const cid = state.currentClassId;
+    list = classStudents();
+    getStats = (s) => stats(cid, s.id, repFrom, repTo);
+    Object.keys(state.records[cid] || {}).filter(inR).forEach((d) => { const k = countDay(cid, d, list); dayMap.set(d, { P: k.P, A: k.A, L: k.L, E: k.E }); });
+    title = 'Komitetas ' + curClass().name;
+  }
+  return { list, getStats, dayMap, title };
+}
 function renderReports() {
-  const cid = state.currentClassId;
-  const list = classStudents();
+  const { list, getStats, dayMap, title } = reportData();
+  const comName = new Map(state.classes.map((c) => [c.id, c.name]));
+  const comNames = (s) => (s.classIds || []).map((id) => comName.get(id)).filter(Boolean).sort((a, b) => a.localeCompare(b, 'lt', { numeric: true })).join(', ');
+  const grade = repMode === 'grade';
   const rows = list.map((s) => {
-    const t = stats(cid, s.id, repFrom, repTo);
-    return `<tr><td><div class="who">${avatar(s)}<div><b>${esc(displayName(s))}</b></div></div></td><td class="num">${t.P}</td><td class="num">${t.A}</td><td class="num">${t.L}</td><td class="num">${t.E}</td><td class="num">${rateBadge(t.rate)}</td></tr>`;
+    const t = getStats(s);
+    return `<tr><td><div class="who">${avatar(s)}<div><b class="name-link" data-act="student-card" data-sid="${s.id}" role="button" tabindex="0">${esc(displayName(s))}</b></div></div></td>${grade ? `<td class="hide-sm">${esc(comNames(s) || '–')}</td>` : ''}<td class="num">${t.P}</td><td class="num">${t.A}</td><td class="num">${t.L}</td><td class="num">${t.E}</td><td class="num">${rateBadge(t.rate)}</td></tr>`;
   }).join('');
-  const days = Object.keys(state.records[cid] || {}).filter((d) => d >= repFrom && d <= repTo).sort().reverse();
-  const dayRows = days.map((d) => {
-    const k = countDay(cid, d, list);
+  const dayRows = [...dayMap.keys()].sort().reverse().map((d) => {
+    const k = dayMap.get(d);
     return `<tr><td>${prettyDate(d)}</td><td class="num">${k.P}</td><td class="num">${k.A}</td><td class="num">${k.L}</td><td class="num">${k.E}</td></tr>`;
   }).join('');
+  const opt = (v, l, cur) => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${esc(l)}</option>`;
   app.innerHTML = head('Ataskaitos', 'Lankomumo suvestinės pasirinktam laikotarpiui',
-    `<button class="btn primary" data-act="export-report">Eksportuoti CSV</button>`) +
-    `<div class="card"><div class="actions"><label class="muted">Nuo <input type="date" id="repFrom" value="${repFrom}"></label><label class="muted">Iki <input type="date" id="repTo" value="${repTo}"></label></div></div>
-    <div class="card"><h2>Pagal mokinį</h2><p class="sub">Rodiklis = (dalyvavo + vėlavo) ÷ (dalyvavo + vėlavo + nedalyvavo). Pateisintos dienos neįskaičiuojamos.</p>
-      ${list.length ? `<div class="table-wrap"><table><thead><tr><th>Mokinys</th><th class="num">Dalyvavo</th><th class="num">Nedalyvavo</th><th class="num">Vėlavo</th><th class="num">Pateisinta</th><th class="num">Rodiklis</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="muted">Nėra mokinių.</p>'}</div>
+    `<button class="btn" data-act="print-page" data-what="print-report">${ICON.print} Spausdinti</button><button class="btn primary" data-act="export-report">Eksportuoti CSV</button>`) +
+    `<div class="print-only print-title"><h2>Lankomumo ataskaita – ${esc(title)}</h2><p>${repFrom} – ${repTo}</p></div>
+    <div class="card"><div class="actions">
+      <select id="repMode" aria-label="Ataskaitos tipas">${opt('com', 'Pagal komitetą (šoninėje juostoje pasirinktą)', repMode)}${opt('grade', 'Pagal mokinio klasę', repMode)}</select>
+      ${grade ? `<select id="repGrade" aria-label="Klasė">${gradeList().map((g) => opt(g, g + ' klasė', repGrade)).join('')}${opt('-', 'Be klasės', repGrade)}</select>` : ''}
+      <label class="muted">Nuo <input type="date" id="repFrom" value="${repFrom}"></label><label class="muted">Iki <input type="date" id="repTo" value="${repTo}"></label></div></div>
+    <div class="card"><h2>Pagal mokinį · ${esc(title)}</h2><p class="sub">Rodiklis = (dalyvavo + vėlavo) ÷ (dalyvavo + vėlavo + nedalyvavo). Pateisintos dienos neįskaičiuojamos.${grade ? ' Klasės ataskaitoje sumuojami visi mokinio komitetai.' : ''}</p>
+      ${list.length ? `<div class="table-wrap"><table><thead><tr><th>Mokinys</th>${grade ? '<th class="hide-sm">Komitetai</th>' : ''}<th class="num">Dalyvavo</th><th class="num">Nedalyvavo</th><th class="num">Vėlavo</th><th class="num">Pateisinta</th><th class="num">Rodiklis</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="muted">Nėra mokinių.</p>'}</div>
     <div class="card"><h2>Pagal dieną</h2><p class="sub">&nbsp;</p>
-      ${days.length ? `<div class="table-wrap"><table><thead><tr><th>Data</th><th class="num">Dalyvavo</th><th class="num">Nedalyvavo</th><th class="num">Vėlavo</th><th class="num">Pateisinta</th></tr></thead><tbody>${dayRows}</tbody></table></div>` : '<p class="muted">Šiuo laikotarpiu lankomumo įrašų nėra.</p>'}</div>`;
+      ${dayRows ? `<div class="table-wrap"><table><thead><tr><th>Data</th><th class="num">Dalyvavo</th><th class="num">Nedalyvavo</th><th class="num">Vėlavo</th><th class="num">Pateisinta</th></tr></thead><tbody>${dayRows}</tbody></table></div>` : '<p class="muted">Šiuo laikotarpiu lankomumo įrašų nėra.</p>'}</div>`;
+}
+function gradeReportCSV() {
+  const { list, getStats } = reportData();
+  const comName = new Map(state.classes.map((c) => [c.id, c.name]));
+  const lines = [['Mokinys', 'Klasė', 'Komitetai', 'Dalyvavo', 'Nedalyvavo', 'Vėlavo', 'Pateisinta', 'Rodiklis %'].map(csvCell).join(',')];
+  list.forEach((s) => {
+    const t = getStats(s);
+    lines.push([displayName(s), s.grade || '', (s.classIds || []).map((id) => comName.get(id)).filter(Boolean).join('; '), t.P, t.A, t.L, t.E, t.rate == null ? '' : t.rate].map(csvCell).join(','));
+  });
+  return lines.join('\n');
 }
 
 function renderData() {
   app.innerHTML = head('Duomenys', 'Atsarginės kopijos ir eksportas') +
     `<div class="card"><h2>Jūsų duomenys</h2>
-      <p class="sub">Duomenys automatiškai saugomi serveryje po kiekvieno pakeitimo ir matomi visiems turintiems prieigą. Atsarginę kopiją vis tiek verta retkarčiais atsisiųsti.</p>
+      <p class="sub">Duomenys automatiškai saugomi serveryje po kiekvieno pakeitimo ir matomi visiems turintiems prieigą.</p>
       <div class="actions">
         <button class="btn primary" data-act="export-json">Atsisiųsti atsarginę kopiją (JSON)</button>
         <button class="btn" data-act="export-all-csv">Eksportuoti visą lankomumą (CSV)</button>
-        <label class="btn" data-act="restore-label">Atkurti iš kopijos<input type="file" id="jsonFile" accept=".json,application/json" hidden></label>
+        <label class="btn" data-act="restore-label">Atkurti iš failo<input type="file" id="jsonFile" accept=".json,application/json" hidden></label>
         <span class="spacer"></span>
         <button class="btn danger" data-act="wipe">Ištrinti visus duomenis</button>
       </div></div>
+    <div class="card"><h2>Atsarginės kopijos serveryje</h2>
+      <p class="sub">Kopija sukuriama automatiškai kiekvieną dieną ir saugoma 30 dienų. Atkūrimą (kaip ir kitus pakeitimus) paprastai galima atšaukti skiltyje LOG.</p>
+      <div class="actions" style="margin-bottom:12px"><button class="btn" data-act="backup-create">Sukurti kopiją dabar</button></div>
+      ${Backups.html()}</div>
     <p class="muted" style="font-size:.8rem">Programos versija: ${APP_VERSION}</p>`;
 }
 
@@ -491,33 +580,74 @@ function renderClasses() {
       : '<p class="muted">Komitetų dar nėra. Spauskite „Naujas komitetas“.</p>'}</div>`;
 }
 function openPromote() {
-  const rows = state.classes.slice().sort(byClassName).map((c) => {
-    const nx = nextClassName(c.name);
-    return `<tr data-cid="${c.id}"><td><input type="checkbox" class="pr-on" aria-label="Perkelti ${esc(c.name)}" ${nx ? 'checked' : ''}></td><td><b>${esc(c.name)}</b></td><td class="muted">&rarr;</td><td><input class="pr-name" value="${esc(nx || c.name)}"></td></tr>`;
+  const grades = gradeList();
+  const rows = grades.map((g) => {
+    const nx = nextClassName(g);
+    const n = state.students.filter((s) => s.grade === g).length;
+    return `<tr data-grade="${esc(g)}"><td><input type="checkbox" class="pr-on" aria-label="Perkelti ${esc(g)}" ${nx ? 'checked' : ''}></td><td><b>${esc(g)}</b> <small class="muted">(${n})</small></td><td class="muted">&rarr;</td><td><input class="pr-name" value="${esc(nx || g)}"></td></tr>`;
   }).join('');
   importDlg.innerHTML = `<div class="dlg">
     <div class="dlg-head"><h3>Perkelti klases į kitus metus</h3><button type="button" class="icon-btn" data-act="close-import" aria-label="Uždaryti">&times;</button></div>
-    <p class="muted" style="margin-top:0">Mokiniai lieka savo klasėse, pasikeičia tik klasės pavadinimas (pvz. 1A &rarr; 2A). Pakoreguokite pavadinimus ir atžymėkite tas klases, kurių perkelti nereikia. Klasės be skaičiaus pavadinime ir nuo 12 klasės nekeičiamos – jei reikia, pavadinimą įrašykite patys.</p>
+    ${grades.length ? `<p class="muted" style="margin-top:0">Pakeičiama mokinių <b>klasė</b> (pvz. 7A &rarr; 8A); komitetai ir lankomumas nesikeičia. Pakoreguokite pavadinimus arba atžymėkite klases, kurių perkelti nereikia (12 klasės ir pavadinimai be skaičiaus nekeičiami automatiškai).</p>
     <table class="promote"><thead><tr><th></th><th>Dabar</th><th></th><th>Bus</th></tr></thead><tbody>${rows}</tbody></table>
-    <label class="check"><input type="checkbox" id="promoteClear"> Išvalyti perkeliamų klasių senus lankomumo įrašus (mokiniai lieka)</label>
-    <p class="muted" style="font-size:.8rem;margin:0">Prieš perkeliant verta atsisiųsti atsarginę kopiją skiltyje „Duomenys“.</p>
-    <div class="dlg-actions"><button type="button" class="btn" data-act="close-import">Atšaukti</button><button type="button" class="btn primary" data-act="do-promote">Perkelti</button></div></div>`;
+    <p class="muted" style="font-size:.8rem;margin:0">Pakeitimą galima atšaukti skiltyje LOG.</p>` : '<p class="muted">Mokiniams dar nepriskirtos klasės.</p>'}
+    <div class="dlg-actions"><button type="button" class="btn" data-act="close-import">Atšaukti</button>${grades.length ? '<button type="button" class="btn primary" data-act="do-promote">Perkelti</button>' : ''}</div></div>`;
   importDlg.showModal();
 }
 function doPromote() {
-  const names = new Map();
-  importDlg.querySelectorAll('tr[data-cid]').forEach((tr) => {
-    const c = state.classes.find((x) => x.id === tr.dataset.cid);
-    const nm = tr.querySelector('.pr-name').value.trim();
-    if (c && tr.querySelector('.pr-on').checked && nm && nm !== c.name) names.set(c.id, nm);
+  const map = new Map();
+  importDlg.querySelectorAll('tr[data-grade]').forEach((tr) => {
+    const g = tr.dataset.grade, nm = tr.querySelector('.pr-name').value.trim();
+    if (tr.querySelector('.pr-on').checked && nm && nm !== g) map.set(g, nm);
   });
-  if (!names.size) { toast('Nėra ką perkelti'); return; }
-  const final = state.classes.map((c) => (names.get(c.id) || c.name).toLowerCase());
-  if (new Set(final).size !== final.length) { toast('Klasių pavadinimai kartojasi – pakeiskite'); return; }
-  const clear = importDlg.querySelector('#promoteClear').checked;
-  if (clear && !confirm('Tikrai išvalyti perkeliamų klasių lankomumo įrašus? Mokiniai liks.')) return;
-  state.classes.forEach((c) => { if (names.has(c.id)) { c.name = names.get(c.id); if (clear) delete state.records[c.id]; } });
-  save(); importDlg.close(); render(); toast(`Perkelta klasių: ${names.size}`);
+  if (!map.size) { toast('Nėra ką perkelti'); return; }
+  let n = 0;
+  state.students.forEach((s) => { if (map.has(s.grade)) { s.grade = map.get(s.grade); n++; } });
+  Sync.tag('Klasių perkėlimas į kitus metus'); save(); importDlg.close(); render(); toast(`Perkelta mokinių: ${n}`);
+}
+
+/* ---------- masinis perkėlimas ---------- */
+function openBulk() {
+  const n = sel.size;
+  if (!n) return;
+  const opts = state.classes.slice().sort(byClassName).map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  importDlg.innerHTML = `<div class="dlg">
+    <div class="dlg-head"><h3>Masinis perkėlimas</h3><button type="button" class="icon-btn" data-act="close-import" aria-label="Uždaryti">&times;</button></div>
+    <p class="muted" style="margin-top:0">Pažymėta mokinių: <b>${n}</b></p>
+    <label class="check"><input type="radio" name="bm" value="move" checked> Perkelti į komitetą (pakeičia visus dabartinius komitetus)</label>
+    <label class="check"><input type="radio" name="bm" value="add"> Pridėti prie komiteto</label>
+    <label class="check"><input type="radio" name="bm" value="remove"> Pašalinti iš komiteto</label>
+    <select id="bmCom" aria-label="Komitetas">${opts}</select>
+    <label class="check"><input type="radio" name="bm" value="grade"> Nustatyti klasę (pvz. 8A)</label>
+    <input id="bmGrade" list="gradeList" placeholder="Klasė" autocomplete="off" style="width:100%">
+    <p class="muted" style="font-size:.8rem">Perkeliant ar šalinant iš komiteto, tų mokinių to komiteto lankomumo žymos pašalinamos. Pakeitimą galima atšaukti skiltyje LOG.</p>
+    <div class="dlg-actions"><button type="button" class="btn" data-act="close-import">Atšaukti</button><button type="button" class="btn primary" data-act="do-bulk">Taikyti</button></div></div>`;
+  document.getElementById('gradeList').innerHTML = gradeList().map((g) => `<option value="${esc(g)}"></option>`).join('');
+  importDlg.showModal();
+}
+function doBulk() {
+  const mode = importDlg.querySelector('input[name=bm]:checked').value;
+  const com = importDlg.querySelector('#bmCom').value;
+  const grade = importDlg.querySelector('#bmGrade').value.trim();
+  const list = state.students.filter((s) => sel.has(s.id));
+  if (!list.length) return;
+  if (mode !== 'grade' && !com) { toast('Pasirinkite komitetą'); return; }
+  if (mode === 'grade' && !grade && !confirm('Klasė bus išvalyta pažymėtiems mokiniams. Tęsti?')) return;
+  const cname = (state.classes.find((c) => c.id === com) || {}).name || '';
+  let n = 0, skipped = 0;
+  list.forEach((s) => {
+    const cur = s.classIds || [];
+    if (mode === 'move') { if (cur.length !== 1 || cur[0] !== com) { setStudentClasses(s, [com]); n++; } }
+    else if (mode === 'add') { if (!cur.includes(com)) { s.classIds = cur.concat(com); n++; } }
+    else if (mode === 'remove') {
+      if (!cur.includes(com)) return;
+      if (cur.length <= 1) { skipped++; return; }
+      setStudentClasses(s, cur.filter((x) => x !== com)); n++;
+    } else if ((s.grade || '') !== grade) { s.grade = grade; n++; }
+  });
+  const label = { move: `Masinis perkėlimas į „${cname}“`, add: `Masiškai pridėta prie „${cname}“`, remove: `Masiškai pašalinta iš „${cname}“`, grade: `Masiškai nustatyta klasė „${grade || '–'}“` }[mode];
+  Sync.tag(label); save(); sel.clear(); importDlg.close(); render();
+  toast(`Pakeista mokinių: ${n}${skipped ? ` · praleista ${skipped} (turi likti bent viename komitete)` : ''}`);
 }
 
 /* ---------- student dialog ---------- */
@@ -545,8 +675,10 @@ form.addEventListener('submit', (e) => {
   if (!data.first || !Auth.can('students.edit')) return;
   data.classIds = [...form.querySelectorAll('input[name="com"]:checked')].map((x) => x.value);
   if (!data.classIds.length) { e.preventDefault(); alert('Pasirinkite bent vieną komitetą.'); return; }
-  if (form.id.value) Object.assign(state.students.find((s) => s.id === form.id.value), data);
-  else state.students.push(Object.assign({ id: uid() }, data));
+  if (form.id.value) {
+    const st = state.students.find((s) => s.id === form.id.value), ids = data.classIds;
+    delete data.classIds; Object.assign(st, data); setStudentClasses(st, ids);
+  } else state.students.push(Object.assign({ id: uid() }, data));
   save(); render();
 });
 
@@ -621,6 +753,35 @@ function doImport() {
   toast(`Importuota mokinių: ${items.length}`);
 }
 
+/* ---------- mokinio kortelė ---------- */
+const cardDlg = document.getElementById('cardDialog');
+function openCard(id) {
+  const s = state.students.find((x) => x.id === id);
+  if (!s) return;
+  const coms = (s.classIds || []).map((cid) => state.classes.find((c) => c.id === cid)).filter(Boolean).sort(byClassName);
+  const tot = statsAll(s);
+  const comRows = coms.map((c) => { const t = stats(c.id, s.id); return `<tr><td>${esc(c.name)}</td><td class="num">${t.P}</td><td class="num">${t.A}</td><td class="num">${t.L}</td><td class="num">${t.E}</td><td class="num">${rateBadge(t.rate)}</td></tr>`; }).join('');
+  const ev = [];
+  coms.forEach((c) => { const recs = state.records[c.id] || {}; for (const d in recs) { const r = recs[d][s.id]; if (r && (r.s === 'A' || r.s === 'L' || r.s === 'E' || r.n)) ev.push({ d, c: c.name, s: r.s, n: r.n }); } });
+  ev.sort((a, b) => b.d.localeCompare(a.d));
+  const evRows = ev.slice(0, 40).map((x) => `<tr><td class="nowrap">${x.d}</td><td>${esc(x.c)}</td><td>${x.s ? `<span class="pill ${STATUS[x.s].cls}"><i></i>${STATUS[x.s].label}</span>` : '–'}</td><td>${esc(x.n || '')}</td></tr>`).join('');
+  cardDlg.innerHTML = `<div class="dlg">
+    <div class="dlg-head"><span></span><button type="button" class="icon-btn" data-act="close-card" aria-label="Uždaryti">&times;</button></div>
+    <div class="card-head">${avatar(s)}<div><h3>${esc(displayName(s))}</h3><span class="muted">Mokinio kortelė${s.grade ? ' · ' + esc(s.grade) + ' klasė' : ''} · ${prettyDate(today())}</span></div><span class="spacer"></span>${rateBadge(tot.rate)}</div>
+    <div class="info-grid">
+      <div><small>El. paštas</small>${esc(s.email || '–')}</div><div><small>Tėvų / globėjų el. paštas</small>${esc(s.parentEmail || '–')}</div>
+      <div><small>Komitetai</small>${esc(coms.map((c) => c.name).join(', ') || '–')}</div><div><small>Pastabos</small>${esc(s.notes || '–')}</div>
+    </div>
+    <h4 class="card-sec">Lankomumas</h4>
+    ${coms.length ? `<div class="table-wrap"><table><thead><tr><th>Komitetas</th><th class="num">Dalyvavo</th><th class="num">Nedalyvavo</th><th class="num">Vėlavo</th><th class="num">Pateisinta</th><th class="num">Rodiklis</th></tr></thead><tbody>${comRows}
+      ${coms.length > 1 ? `<tr><td><b>Iš viso</b></td><td class="num">${tot.P}</td><td class="num">${tot.A}</td><td class="num">${tot.L}</td><td class="num">${tot.E}</td><td class="num">${rateBadge(tot.rate)}</td></tr>` : ''}</tbody></table></div>` : '<p class="muted">Komitetų nėra.</p>'}
+    <h4 class="card-sec">Praleidimai, vėlavimai ir pastabos</h4>
+    ${evRows ? `<div class="table-wrap"><table><thead><tr><th>Data</th><th>Komitetas</th><th>Būsena</th><th>Pastaba</th></tr></thead><tbody>${evRows}</tbody></table></div>${ev.length > 40 ? `<p class="muted" style="font-size:.8rem">Rodoma 40 naujausių iš ${ev.length}.</p>` : ''}` : '<p class="muted">Įrašų nėra.</p>'}
+    <div class="dlg-actions"><button type="button" class="btn" data-act="edit-student" data-sid="${s.id}">Redaguoti</button><button type="button" class="btn primary" data-act="print-card" data-sid="${s.id}">${ICON.print} Spausdinti</button></div></div>`;
+  applyPerms();
+  cardDlg.showModal();
+}
+
 /* ---------- exports ---------- */
 function allAttendanceCSV(cid, from, to) {
   const list = state.students.filter((s) => (s.classIds || []).includes(cid)).sort((a, b) => fullName(a).localeCompare(fullName(b)));
@@ -638,13 +799,14 @@ function allAttendanceCSV(cid, from, to) {
 document.addEventListener('click', (e) => {
   if (e.target === importDlg) { importDlg.close(); return; }
   if (e.target === dialog) { dialog.close(); return; }
+  if (e.target === cardDlg) { cardDlg.close(); return; }
   const el = e.target.closest('[data-act]');
   if (!el) return;
   const act = el.dataset.act;
   const cid = state.currentClassId;
   if (ACT_PERM[act] && !Auth.can(ACT_PERM[act])) { toast('Neturite teisės atlikti šio veiksmo'); return; }
   switch (act) {
-    case 'tab': view = el.dataset.view; Auth.invalidate(); render(); window.scrollTo(0, 0); break;
+    case 'tab': view = el.dataset.view; sel.clear(); Logs.reset(); Backups.reset(); Auth.invalidate(); render(); window.scrollTo(0, 0); break;
     case 'go-attendance': view = 'attendance'; render(); break;
     case 'theme':
       try { localStorage.setItem(THEME_KEY, currentTheme() === 'dark' ? 'light' : 'dark'); } catch (err) { /* ignore */ }
@@ -676,7 +838,14 @@ document.addEventListener('click', (e) => {
     case 'next-day': attDate = shiftDate(attDate, 1); render(); break;
     case 'today': attDate = today(); render(); break;
     case 'add-student': openStudentDialog(null); break;
-    case 'edit-student': openStudentDialog(state.students.find((s) => s.id === el.dataset.sid)); break;
+    case 'student-card': openCard(el.dataset.sid); break;
+    case 'close-card': cardDlg.close(); break;
+    case 'print-card': { const st = state.students.find((x) => x.id === el.dataset.sid); document.body.classList.add('print-card'); logClient('print-card', st ? displayName(st) : ''); setTimeout(() => window.print(), 50); break; }
+    case 'print-page': printPage(el.dataset.what, (act === 'print-page' && el.dataset.what === 'print-day' ? curClass().name + ' ' + attDate : reportData().title + ' ' + repFrom + '–' + repTo)); break;
+    case 'open-bulk': openBulk(); break;
+    case 'do-bulk': doBulk(); break;
+    case 'sel-clear': sel.clear(); render(); break;
+    case 'edit-student': if (cardDlg.open) cardDlg.close(); openStudentDialog(state.students.find((s) => s.id === el.dataset.sid)); break;
     case 'close-dialog': dialog.close(); break;
     case 'open-import': openImport(); break;
     case 'open-promote': openPromote(); break;
@@ -699,7 +868,7 @@ document.addEventListener('click', (e) => {
       const s = state.students.find((x) => x.id === el.dataset.sid);
       if ((s.classIds || []).length > 1) {
         if (!confirm(`Pašalinti ${displayName(s)} iš komiteto „${curClass().name}“? Mokinys liks kituose komitetuose.`)) break;
-        s.classIds = s.classIds.filter((x) => x !== cid);
+        setStudentClasses(s, s.classIds.filter((x) => x !== cid));
       } else {
         if (!confirm(`Ištrinti ${displayName(s)}?`)) break;
         state.students = state.students.filter((x) => x.id !== s.id);
@@ -707,25 +876,33 @@ document.addEventListener('click', (e) => {
       }
       save(); render(); break;
     }
-    case 'export-report': download(`attendance-${curClass().name.replace(/\W+/g, '_')}-${repFrom}_to_${repTo}.csv`, allAttendanceCSV(cid, repFrom, repTo)); break;
+    case 'export-report': {
+      const rd = reportData();
+      logClient('export-report', rd.title + ' ' + repFrom + '–' + repTo);
+      download(`attendance-${rd.title.replace(/\W+/g, '_')}-${repFrom}_to_${repTo}.csv`, repMode === 'grade' ? gradeReportCSV() : allAttendanceCSV(cid, repFrom, repTo)); break;
+    }
     case 'export-all-csv': {
       const out = [];
       state.classes.forEach((c) => { out.push('Komitetas: ' + c.name, allAttendanceCSV(c.id), ''); });
-      download('attendance-all.csv', out.join('\n')); break;
+      logClient('export-csv'); download('attendance-all.csv', out.join('\n')); break;
     }
-    case 'export-json': download(`attendance-backup-${today()}.json`, JSON.stringify(state, null, 2), 'application/json'); break;
+    case 'export-json': logClient('export-json'); download(`attendance-backup-${today()}.json`, JSON.stringify(state, null, 2), 'application/json'); break;
     case 'wipe':
       if (confirm('Ištrinti VISUS komitetus, mokinius ir lankomumą iš serverio (visiems vartotojams)?') && confirm('Šio veiksmo atšaukti negalima. Tikrai viską ištrinti?')) {
-        state = { classes: [], students: [], records: {}, currentClassId: null }; save(); render();
+        state = { classes: [], students: [], records: {}, currentClassId: null }; Sync.tag('Ištrinti visi duomenys'); save(); render();
       }
       break;
-    default: Auth.act(act, el);
+    default: if (!Logs.act(act, el) && !Backups.act(act, el)) Auth.act(act, el);
   }
 });
 
 document.addEventListener('change', (e) => {
   const t = e.target;
-  if (t.id === 'allCom') { allCom = t.value; render(); }
+  if (t.dataset && t.dataset.sel !== undefined) { if (t.checked) sel.add(t.dataset.sel); else sel.delete(t.dataset.sel); render(); }
+  else if (t.dataset && t.dataset.selall !== undefined) { visIds.forEach((id) => { if (t.checked) sel.add(id); else sel.delete(id); }); render(); }
+  else if (t.id === 'repMode') { repMode = t.value; render(); }
+  else if (t.id === 'repGrade') { repGrade = t.value; render(); }
+  else if (t.id === 'allCom') { allCom = t.value; render(); }
   else if (t.id === 'allGrade') { allGrade = t.value; render(); }
   else if (t.id === 'classSelect') { state.currentClassId = t.value; save(); render(); }
   else if (t.id === 'attDate') { if (t.value) { attDate = t.value; render(); } }
@@ -740,8 +917,7 @@ document.addEventListener('change', (e) => {
         const s = JSON.parse(text);
         if (!s || !Array.isArray(s.classes) || !Array.isArray(s.students) || typeof s.records !== 'object') throw new Error('bad');
         if (!confirm('Pakeisti VISUS serverio duomenis kopijos duomenimis?')) return;
-        state = s; state.students = state.students.map(normStudent); if (!state.currentClassId && state.classes[0]) state.currentClassId = state.classes[0].id;
-        save(); render();
+        restoreState(s, 'Atkurta iš failo');
       } catch (err) { alert('Tai nėra tinkama atsarginė kopija.'); }
     });
   }
@@ -759,6 +935,10 @@ document.addEventListener('input', (e) => {
     render();
     const el = document.getElementById('allSearch'); el.focus(); el.setSelectionRange(pos, pos);
   } else if (e.target.id === 'importText') updateImportPreview();
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.target.classList && e.target.classList.contains('name-link')) e.target.click();
 });
 
 document.addEventListener('dragover', (e) => {
