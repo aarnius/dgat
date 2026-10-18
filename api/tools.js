@@ -4,6 +4,7 @@ import { db, handler, HttpError, getUser, requireUser, requirePerm, logEvent, lo
 
 const ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
 const needId = (v) => { if (!ID_RE.test(String(v))) throw new HttpError(400, 'Netinkami duomenys.'); return String(v); };
+const WIDTHS = ['auto', 'xs', 's', 'm', 'l', 'xl'];
 
 async function list(sql, me) {
   const ids = me.classIds; // null = visi komitetai
@@ -59,7 +60,14 @@ export default handler(async (req, res, body) => {
       if (!name) throw new HttpError(400, 'Įveskite pavadinimą.');
       const d = body.data && typeof body.data === 'object' ? body.data : {};
       const num = (v, min, max) => Math.max(min, Math.min(max, Math.floor(Number(v)) || 0));
-      const data = { type: d.type === 'blank' ? 'blank' : 'sign', title: str(d.title, 150), cols: num(d.cols, 0, 10), heads: str(d.heads, 300), extra: num(d.extra, 0, 40), grade: !!d.grade, rowh: d.rowh === 'tall' ? 'tall' : 'normal' };
+      const cols = (Array.isArray(d.cols) ? d.cols : []).slice(0, 15).map((c) => ({ n: str(c && c.n, 60), w: WIDTHS.includes(c && c.w) ? c.w : 'auto' }));
+      const data = {
+        title: str(d.title, 150), sub: str(d.sub, 200),
+        hNr: str(d.hNr, 60), hName: str(d.hName, 60), hGrade: str(d.hGrade, 60),
+        num: d.num !== false, grade: !!d.grade, cols, extra: num(d.extra, 0, 40),
+        rowh: ['compact', 'normal', 'tall'].includes(d.rowh) ? d.rowh : 'normal',
+        fs: ['s', 'm', 'l'].includes(d.fs) ? d.fs : 'm', land: !!d.land,
+      };
       let id = body.id ? needId(body.id) : '';
       if (id) {
         const rows = await sql`UPDATE list_templates SET name = ${name}, data = ${JSON.stringify(data)}::jsonb, updated_at = now() WHERE id = ${id} RETURNING id`;

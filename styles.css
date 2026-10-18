@@ -493,3 +493,23 @@ table.sheet .sigcol { width: 38%; }
   .cal-day { min-height: 70px; background: none; border: 1px solid #888; break-inside: avoid; }
   .cal-ev { background: none; padding: 0; white-space: normal; }
 }
+/* ---------- v13: redaguojamas sąrašas spausdinimui ---------- */
+.col-list { display: flex; flex-direction: column; gap: 8px; }
+.col-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.col-row input { flex: 1 1 200px; min-width: 0; }
+.col-row select { min-width: 150px; }
+.sheet-head { margin-bottom: 10px; }
+.sheet-head h2 { margin: 0; font-size: 1.15rem; }
+.sheet-head p { margin: 2px 0 0; color: var(--muted); }
+.th-in { width: 100%; min-width: 50px; padding: 4px 6px; border-radius: 8px; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); background: transparent; border: 1px dashed var(--line); }
+.th-in:focus { background: var(--surface); color: var(--text); text-transform: none; }
+table.sheet tr.compact td { height: 28px; }
+table.sheet.fs-s { font-size: 0.8rem; }
+table.sheet.fs-l { font-size: 1.05rem; }
+@media print {
+  .sheet-head h2 { font-size: 1.2rem; }
+  .sheet-head p { color: #444; }
+  table.sheet th .print-only { display: inline; margin: 0; }
+  table.sheet.fs-s { font-size: 10px; }
+  table.sheet.fs-l { font-size: 14px; }
+}

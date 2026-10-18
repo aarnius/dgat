@@ -1,7 +1,8 @@
-/* Įrankiai: grupių skirstymas (su išsaugojimu), atsitiktinis mokinio traukimas, sąrašai spausdinimui (su šablonais), rizikos sąrašas, kalendorius, dublikatų paieška ir sujungimas.
+/* Įrankiai: grupių skirstymas (su išsaugojimu), atsitiktinis mokinio traukimas, redaguojami sąrašai spausdinimui (su šablonais), rizikos sąrašas, dublikatų paieška ir sujungimas.
+   Čia taip pat yra kalendoriaus kortelė (Tools.calendar), kurią rodo „Apžvalga“.
    Naudoja app.js / auth.js / activities.js funkcijas (state, classStudents, stats, Acts, api, head, esc, toast...). */
 const Tools = (() => {
-  const TABS = [['groups', 'Grupių skirstymas'], ['draw', 'Atsitiktinis mokinys'], ['lists', 'Sąrašai spausdinimui'], ['risk', 'Rizikos sąrašas'], ['cal', 'Kalendorius'], ['dupes', 'Dublikatai']];
+  const TABS = [['groups', 'Grupių skirstymas'], ['draw', 'Atsitiktinis mokinys'], ['lists', 'Sąrašai spausdinimui'], ['risk', 'Rizikos sąrašas'], ['dupes', 'Dublikatai']];
   const IGN_KEY = 'attendance-dupe-ignore';
   const loadIgn = () => { try { return new Set(JSON.parse(localStorage.getItem(IGN_KEY) || '[]')); } catch (e) { return new Set(); } };
 
@@ -9,7 +10,7 @@ const Tools = (() => {
   const S = { src: 'all', grade: '', skip: false, excl: new Set(), pickOpen: false, key: '' };
   const G = { mode: 'n', n: 3, size: 4, mix: false, res: null };
   const D = { n: 1, norepeat: true, drawn: [], hist: [], last: [], busy: false };
-  const L = { tpl: '', type: 'sign', title: '', date: '', cols: 4, heads: '', extra: 0, grade: true, rowh: 'normal' };
+  const L = { tpl: '', title: '', sub: 'Data: ____________________', hNr: 'Nr.', hName: 'Vardas, pavardė', hGrade: 'Klasė', num: true, grade: true, cols: [{ n: 'Parašas', w: 'xl' }], extra: 0, rowh: 'normal', fs: 'm', land: false };
   const R = { scope: 'com', from: '', to: '', thr: 80, minDays: 3, streak: 3, acts: true };
   const X = { fuzzy: false, ignore: loadIgn() };
   const C = { m: '' };
@@ -134,11 +135,28 @@ const Tools = (() => {
       ${D.hist.length ? `<div class="card no-print"><h2>Istorija</h2><ol class="draw-hist">${D.hist.slice(0, 12).map((h) => `<li><span class="muted">${new Date(h.t).toLocaleTimeString('lt-LT', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span> ${h.ids.map((id) => esc(nm(id))).join(', ')}</li>`).join('')}</ol></div>` : ''}`;
   }
 
-  /* ---------- sąrašai spausdinimui (su šablonais) ---------- */
-  const TPL_KEYS = ['type', 'title', 'cols', 'heads', 'extra', 'grade', 'rowh'];
-  const tplData = () => Object.fromEntries(TPL_KEYS.map((k) => [k, L[k]]));
+  /* ---------- sąrašai spausdinimui: viskas redaguojama, nustatymai saugomi šablonuose ---------- */
+  const WIDTHS = [['auto', 'Automatinis'], ['xs', 'Labai siauras'], ['s', 'Siauras'], ['m', 'Vidutinis'], ['l', 'Platus'], ['xl', 'Labai platus']];
+  const PCT = { xs: 5, s: 9, m: 15, l: 25, xl: 38 };
+  const wStyle = (w) => (PCT[w] ? ` style="width:${PCT[w]}%"` : '');
+  /* Sąrašo nustatymai vienodu pavidalu (tinka ir senesnio formato šablonams). */
+  function normTpl(d) {
+    d = d || {};
+    let cols = Array.isArray(d.cols) ? d.cols : null;
+    if (!cols) {
+      if (d.type === 'blank') { const h = String(d.heads || '').split(','); cols = Array.from({ length: Math.max(0, Math.min(10, Number(d.cols) || 0)) }, (_, i) => ({ n: (h[i] || '').trim(), w: 'auto' })); }
+      else cols = [{ n: 'Parašas', w: 'xl' }];
+    }
+    return {
+      title: d.title || '', sub: d.sub !== undefined ? d.sub : 'Data: ____________________',
+      hNr: d.hNr !== undefined ? d.hNr : 'Nr.', hName: d.hName !== undefined ? d.hName : 'Vardas, pavardė', hGrade: d.hGrade !== undefined ? d.hGrade : 'Klasė',
+      num: d.num !== false, grade: d.grade !== false, cols: cols.map((c) => ({ n: String((c && c.n) || ''), w: (c && c.w) || 'auto' })),
+      extra: Number(d.extra) || 0, rowh: d.rowh || 'normal', fs: d.fs || 'm', land: !!d.land,
+    };
+  }
+  const tplData = () => normTpl(L);
   const curTpl = () => tpls.find((t) => t.id === L.tpl);
-  function applyTpl() { const t = curTpl(); if (t) TPL_KEYS.forEach((k) => { if (t.data[k] !== undefined) L[k] = t.data[k]; }); }
+  function applyTpl() { const t = curTpl(); if (t) Object.assign(L, normTpl(t.data)); }
   async function tplSave(id, name, data) {
     try {
       const r = await api('/api/tools', { action: 'tpl-save', id, name, data });
@@ -149,37 +167,51 @@ const Tools = (() => {
   function tplBox() {
     if (saved === null && savedSt === 'idle') loadSaved();
     const cur = curTpl(), can = Auth.can('tools.save');
-    const changed = cur && TPL_KEYS.some((k) => String(cur.data[k]) !== String(L[k]));
+    const changed = cur && JSON.stringify(normTpl(cur.data)) !== JSON.stringify(tplData());
     return `<div class="card no-print"><div class="tool-opts">
       <label>Šablonas<select data-tool="L.tpl"><option value="">– be šablono –</option>${tpls.map((t) => `<option value="${t.id}" ${t.id === L.tpl ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></label>
       ${can && cur ? `<button class="btn small ${changed ? 'primary' : ''}" data-act="tool-tpl-update">Išsaugoti šablono pakeitimus</button><button class="btn small" data-act="tool-tpl-rename">Pervadinti</button><button class="btn small danger" data-act="tool-tpl-del">Ištrinti</button>` : ''}
       ${can ? `<button class="btn small" data-act="tool-tpl-new">${ICON.plus} Naujas šablonas iš šių nustatymų</button>` : ''}</div>
       <p class="sub" style="margin:10px 0 0">${cur
-        ? (changed ? 'Nustatymai pakeisti – paspauskite „Išsaugoti šablono pakeitimus“, kad šablonas būtų atnaujintas.' : 'Šablonas pritaikytas. Norėdami jį redaguoti, pakeiskite nustatymus žemiau.')
-        : 'Šablonas išsaugo sąrašo tipą, pavadinimą, stulpelius, eilutes ir jų aukštį. Šablonai bendri visiems komitetams.'}</p></div>`;
+        ? (changed ? 'Nustatymai pakeisti – paspauskite „Išsaugoti šablono pakeitimus“, kad šablonas būtų atnaujintas.' : 'Šablonas pritaikytas. Norėdami jį redaguoti, keiskite nustatymus ar lentelę žemiau.')
+        : 'Šablonas išsaugo visus sąrašo nustatymus: pavadinimą, stulpelius, jų pavadinimus ir plotį, eilutes, šriftą ir lapo padėtį. Šablonai bendri visiems komitetams.'}</p></div>`;
   }
+  const hIn = (attrs, v, ph) => `<input class="th-in no-print" ${attrs} value="${esc(v)}" placeholder="${esc(ph)}" maxlength="60"><span class="print-only">${esc(v)}</span>`;
   function renderLists() {
     const ppl = pool();
-    const title = L.title.trim() || (L.type === 'sign' ? 'Pasirašymo lapas' : 'Sąrašas') + ' – ' + srcTitle();
-    const n = Math.max(0, Math.min(10, Math.floor(L.cols) || 0));
-    const heads = L.heads.split(',').map((x) => x.trim());
+    const title = L.title.trim() || 'Sąrašas – ' + srcTitle();
     const extra = Math.max(0, Math.min(40, Math.floor(L.extra) || 0));
-    const rowCls = L.rowh === 'tall' ? 'tall' : '';
-    const colHead = L.type === 'sign' ? '<th class="sigcol">Parašas</th>' : Array.from({ length: n }, (_, i) => `<th>${esc(heads[i] || '')}</th>`).join('');
-    const blankCells = L.type === 'sign' ? '<td class="sigcol"></td>' : '<td></td>'.repeat(n);
-    const rows = ppl.map((s, i) => `<tr class="${rowCls}"><td class="num">${i + 1}</td><td><b>${esc(displayName(s))}</b></td>${L.grade ? `<td>${esc(s.grade || '')}</td>` : ''}${blankCells}</tr>`).join('') +
-      Array.from({ length: extra }, (_, i) => `<tr class="${rowCls}"><td class="num">${ppl.length + i + 1}</td><td></td>${L.grade ? '<td></td>' : ''}${blankCells}</tr>`).join('');
+    const rowCls = L.rowh === 'normal' ? '' : L.rowh;
+    const blank = L.cols.map(() => '<td></td>').join('');
+    const nCols = (L.num ? 1 : 0) + 1 + (L.grade ? 1 : 0) + L.cols.length;
+    const row = (i, s) => `<tr class="${rowCls}">${L.num ? `<td class="num">${i + 1}</td>` : ''}<td>${s ? `<b>${esc(displayName(s))}</b>` : ''}</td>${L.grade ? `<td>${s ? esc(s.grade || '') : ''}</td>` : ''}${blank}</tr>`;
+    const rows = ppl.map((s, i) => row(i, s)).join('') + Array.from({ length: extra }, (_, i) => row(ppl.length + i, null)).join('');
+    const thead = `${L.num ? `<th class="num" style="width:6%">${hIn('data-lh="hNr"', L.hNr, 'Nr.')}</th>` : ''}<th>${hIn('data-lh="hName"', L.hName, 'Vardas, pavardė')}</th>${L.grade ? `<th style="width:9%">${hIn('data-lh="hGrade"', L.hGrade, 'Klasė')}</th>` : ''}` +
+      L.cols.map((c, i) => `<th${wStyle(c.w)}>${hIn(`data-lcol="${i}" data-lf="n"`, c.n, 'Stulpelis ' + (i + 1))}</th>`).join('');
+    const colRows = L.cols.map((c, i) => `<div class="col-row"><span class="muted">${i + 1}.</span>
+      <input data-lcol="${i}" data-lf="n" value="${esc(c.n)}" placeholder="Stulpelio pavadinimas" maxlength="60">
+      <select data-lcol="${i}" data-lf="w" aria-label="Stulpelio plotis">${WIDTHS.map(([k, l]) => `<option value="${k}" ${c.w === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      <button class="btn small" data-act="tool-lcol" data-op="up" data-i="${i}" ${i ? '' : 'disabled'} aria-label="Perkelti kairiau">←</button>
+      <button class="btn small" data-act="tool-lcol" data-op="down" data-i="${i}" ${i < L.cols.length - 1 ? '' : 'disabled'} aria-label="Perkelti dešiniau">→</button>
+      <button class="btn small danger" data-act="tool-lcol" data-op="del" data-i="${i}" aria-label="Pašalinti stulpelį">×</button></div>`).join('');
     return srcBox() + tplBox() + `<div class="card no-print"><div class="tool-opts">
-      <label>Sąrašo tipas<select data-tool="L.type"><option value="sign" ${L.type === 'sign' ? 'selected' : ''}>Pasirašymo sąrašas</option><option value="blank" ${L.type === 'blank' ? 'selected' : ''}>Tuščias lapas (lentelė)</option></select></label>
       <label>Pavadinimas<input data-tool="L.title" value="${esc(L.title)}" placeholder="${esc(title)}" maxlength="150"></label>
-      <label>Data (neprivaloma)<input type="date" data-tool="L.date" value="${esc(L.date)}"></label>
-      ${L.type === 'blank' ? `<label>Tuščių stulpelių<input type="number" min="0" max="10" data-tool="L.cols" value="${n}"></label><label>Stulpelių pavadinimai (per kablelį)<input data-tool="L.heads" value="${esc(L.heads)}" placeholder="pvz. Pastabos, Balas"></label>` : ''}
+      <label>Eilutė po pavadinimu<input data-tool="L.sub" value="${esc(L.sub)}" placeholder="pvz. Data: ____________" maxlength="200"></label>
       <label>Papildomų tuščių eilučių<input type="number" min="0" max="40" data-tool="L.extra" value="${extra}"></label>
-      <label>Eilučių aukštis<select data-tool="L.rowh"><option value="normal" ${L.rowh === 'normal' ? 'selected' : ''}>Įprastas</option><option value="tall" ${L.rowh === 'tall' ? 'selected' : ''}>Didesnis (parašams)</option></select></label>
+      <label>Eilučių aukštis<select data-tool="L.rowh"><option value="compact" ${L.rowh === 'compact' ? 'selected' : ''}>Žemas</option><option value="normal" ${L.rowh === 'normal' ? 'selected' : ''}>Įprastas</option><option value="tall" ${L.rowh === 'tall' ? 'selected' : ''}>Aukštas (parašams)</option></select></label>
+      <label>Šrifto dydis<select data-tool="L.fs"><option value="s" ${L.fs === 's' ? 'selected' : ''}>Mažas</option><option value="m" ${L.fs === 'm' ? 'selected' : ''}>Įprastas</option><option value="l" ${L.fs === 'l' ? 'selected' : ''}>Didelis</option></select></label>
+      <label class="check"><input type="checkbox" data-tool="L.num" ${L.num ? 'checked' : ''}> Rodyti numerį</label>
       <label class="check"><input type="checkbox" data-tool="L.grade" ${L.grade ? 'checked' : ''}> Rodyti klasę</label>
-      <button class="btn small" data-act="tool-print" data-t="lists">${ICON.print} Spausdinti</button><button class="btn small" data-act="tool-csv" data-t="lists">CSV</button></div></div>
-      <div class="print-only print-title"><h2>${esc(title)}</h2><p>${L.date ? prettyDate(L.date) : 'Data: ____________________'}</p></div>
-      <div class="card"><div class="table-wrap"><table class="sheet"><thead><tr><th class="num">Nr.</th><th>Vardas, pavardė</th>${L.grade ? '<th>Klasė</th>' : ''}${colHead}</tr></thead><tbody>${rows || '<tr><td colspan="9" class="muted">Mokinių nėra.</td></tr>'}</tbody></table></div></div>`;
+      <label class="check"><input type="checkbox" data-tool="L.land" ${L.land ? 'checked' : ''}> Gulsčias lapas</label></div>
+      <h2 style="margin-top:18px">Papildomi stulpeliai</h2>
+      <div class="col-list">${colRows || '<p class="muted" style="margin:0">Papildomų stulpelių nėra.</p>'}</div>
+      <div class="actions" style="margin-top:12px"><button class="btn small" data-act="tool-lcol" data-op="add">${ICON.plus} Pridėti stulpelį</button>
+      <button class="btn small" data-act="tool-lpreset" data-p="sign">Pasirašymo lapas</button><button class="btn small" data-act="tool-lpreset" data-p="blank">Tuščia lentelė</button>
+      <span class="spacer"></span><button class="btn small" data-act="tool-print" data-t="lists">${ICON.print} Spausdinti</button><button class="btn small" data-act="tool-csv" data-t="lists">CSV</button></div>
+      <p class="sub" style="margin:10px 0 0">Stulpelių pavadinimus galite keisti ir tiesiai lentelės antraštėje žemiau.</p></div>
+      ${L.land ? '<style>@page { size: A4 landscape; }</style>' : ''}
+      <div class="card"><div class="sheet-head"><h2>${esc(title)}</h2>${L.sub.trim() ? `<p>${esc(L.sub)}</p>` : ''}</div>
+      <div class="table-wrap"><table class="sheet fs-${esc(L.fs)}"><thead><tr>${thead}</tr></thead><tbody>${rows || `<tr><td colspan="${nCols}" class="muted">Mokinių nėra.</td></tr>`}</tbody></table></div></div>`;
   }
 
   /* ---------- rizikos sąrašas ---------- */
@@ -227,9 +259,10 @@ const Tools = (() => {
         : '<p class="muted">Pagal šiuos kriterijus nieko nerasta. Puiku!</p>'}</div>`;
   }
 
-  /* ---------- kalendorius ---------- */
+  /* ---------- kalendorius (rodomas „Apžvalgoje“) ---------- */
   const MONTHS = ['Sausis', 'Vasaris', 'Kovas', 'Balandis', 'Gegužė', 'Birželis', 'Liepa', 'Rugpjūtis', 'Rugsėjis', 'Spalis', 'Lapkritis', 'Gruodis'];
-  function renderCal() {
+  function calendarCard() {
+    if (!cid()) return '';
     if (!C.m) C.m = today().slice(0, 7);
     const [y, m] = C.m.split('-').map(Number);
     const days = new Date(y, m, 0).getDate(), lead = (new Date(y, m - 1, 1).getDay() + 6) % 7; // savaitė prasideda pirmadieniu
@@ -245,9 +278,8 @@ const Tools = (() => {
       cells += `<div class="cal-day${d === t ? ' today' : ''}"><div class="cal-num"><span>${n}</span>${marked ? `<span class="cal-att" title="Dienos lankomume pažymėta: ${marked}">✓ ${marked}</span>` : ''}</div>` +
         ss.map((s) => `<button class="cal-ev" data-act="sess-mark" data-ssid="${s.id}" title="${esc(s.act.name + (Acts.hhmm(s) ? ' · ' + Acts.hhmm(s) : '') + (s.note ? ' · ' + s.note : ''))}">${s.from ? `<b>${esc(s.from)}</b> ` : ''}${esc(s.act.name)}</button>`).join('') + '</div>';
     }
-    return `<div class="print-only print-title"><h2>Kalendorius – ${esc(comName(cid()))}</h2><p>${MONTHS[m - 1]} ${y}</p></div>
-      <div class="card"><div class="tool-bar"><div><h2>${MONTHS[m - 1]} ${y}</h2><p class="sub no-print" style="margin:0">Užsiėmimų šį mėnesį: ${nSess}. Paspaudus užsiėmimą atidaromas jo žymėjimas.</p></div>
-      <div class="actions no-print"><button class="btn small" data-act="tool-cal" data-d="-1" aria-label="Ankstesnis mėnuo">&larr;</button><button class="btn small" data-act="tool-cal" data-d="0">Šiandien</button><button class="btn small" data-act="tool-cal" data-d="1" aria-label="Kitas mėnuo">&rarr;</button><button class="btn small" data-act="tool-print" data-t="cal">${ICON.print} Spausdinti</button></div></div>
+    return `<div class="card no-print"><div class="tool-bar"><div><h2>Kalendorius · ${MONTHS[m - 1]} ${y}</h2><p class="sub" style="margin:0">${esc(comName(cid()))} · užsiėmimų: ${nSess}. Paspaudus užsiėmimą atidaromas jo žymėjimas.</p></div>
+      <div class="actions"><button class="btn small" data-act="tool-cal" data-d="-1" aria-label="Ankstesnis mėnuo">&larr;</button><button class="btn small" data-act="tool-cal" data-d="0">Šiandien</button><button class="btn small" data-act="tool-cal" data-d="1" aria-label="Kitas mėnuo">&rarr;</button></div></div>
       <div class="cal-grid">${['Pr', 'An', 'Tr', 'Kt', 'Pn', 'Št', 'Sk'].map((w) => `<div class="cal-wd">${w}</div>`).join('')}${cells}</div></div>`;
   }
 
@@ -315,7 +347,11 @@ const Tools = (() => {
       r.groups.forEach((g, i) => g.forEach((id) => lines.push([i + 1, nameOf(id, r), gradeOf(id)].map(csvCell).join(','))));
       return [(r.title || 'grupes'), lines.join('\n')];
     }
-    if (t === 'lists') { const l = pool(); return ['sarasas', [['Nr.', 'Mokinys', 'Klasė'].map(csvCell).join(','), ...l.map((s, i) => [i + 1, displayName(s), s.grade || ''].map(csvCell).join(','))].join('\n')]; }
+    if (t === 'lists') {
+      const l = pool();
+      const hd = [...(L.num ? [L.hNr] : []), L.hName, ...(L.grade ? [L.hGrade] : []), ...L.cols.map((c) => c.n)];
+      return ['sarasas', [hd.map(csvCell).join(','), ...l.map((s, i) => [...(L.num ? [i + 1] : []), displayName(s), ...(L.grade ? [s.grade || ''] : []), ...L.cols.map(() => '')].map(csvCell).join(','))].join('\n')];
+    }
     if (t === 'risk') {
       const rows = riskRows();
       return ['rizikos-sarasas', [['Mokinys', 'Klasė', 'Komitetai', 'Nedalyvavo', 'Vėlavo', 'Iš eilės', 'Paskutinis praleidimas', 'Rodiklis %'].map(csvCell).join(','),
@@ -326,7 +362,7 @@ const Tools = (() => {
 
   /* ---------- puslapis ---------- */
   function renderPage() {
-    const body = { groups: renderGroups, draw: renderDraw, lists: renderLists, risk: renderRisk, cal: renderCal, dupes: renderDupes }[tab]();
+    const body = { groups: renderGroups, draw: renderDraw, lists: renderLists, risk: renderRisk, dupes: renderDupes }[tab]();
     app.innerHTML = head('Įrankiai', esc(curClass().name)) +
       `<div class="tool-tabs no-print">${TABS.map(([k, l]) => `<button class="btn ${tab === k ? 'primary' : ''}" data-act="tool-tab" data-t="${k}">${l}</button>`).join('')}</div>` + body;
   }
@@ -370,7 +406,7 @@ const Tools = (() => {
       case 'tool-tpl-update': { const t = curTpl(); if (t) tplSave(t.id, t.name, tplData()); return true; }
       case 'tool-tpl-rename': {
         const t = curTpl();
-        if (t) UI.prompt('Pervadinti šabloną', t.name, { label: 'Naujas pavadinimas', okText: 'Išsaugoti', max: 120 }).then((name) => { if (name) tplSave(t.id, name, t.data); });
+        if (t) UI.prompt('Pervadinti šabloną', t.name, { label: 'Naujas pavadinimas', okText: 'Išsaugoti', max: 120 }).then((name) => { if (name) tplSave(t.id, name, normTpl(t.data)); });
         return true;
       }
       case 'tool-tpl-del': {
@@ -382,6 +418,18 @@ const Tools = (() => {
         });
         return true;
       }
+      case 'tool-lcol': {
+        const i = Number(el.dataset.i), op = el.dataset.op, c = L.cols;
+        if (op === 'add') { if (c.length < 15) c.push({ n: '', w: 'auto' }); else toast('Daugiausia 15 stulpelių'); }
+        else if (op === 'del') c.splice(i, 1);
+        else if (op === 'up' && i > 0) [c[i - 1], c[i]] = [c[i], c[i - 1]];
+        else if (op === 'down' && i < c.length - 1) [c[i + 1], c[i]] = [c[i], c[i + 1]];
+        render(); return true;
+      }
+      case 'tool-lpreset':
+        if (el.dataset.p === 'sign') { L.cols = [{ n: 'Parašas', w: 'xl' }]; L.rowh = 'tall'; }
+        else { L.cols = Array.from({ length: 4 }, () => ({ n: '', w: 'auto' })); L.rowh = 'normal'; }
+        render(); return true;
       case 'tool-cal': {
         const k = Number(el.dataset.d);
         if (!k) C.m = today().slice(0, 7);
@@ -392,7 +440,7 @@ const Tools = (() => {
       case 'tool-draw-reset': D.drawn = []; D.hist = []; D.last = []; render(); return true;
       case 'tool-pick-all': S.excl.clear(); document.querySelectorAll('#tPick input[data-tx]').forEach((i) => { i.checked = true; }); pickCount(); return true;
       case 'tool-pick-none': document.querySelectorAll('#tPick input[data-tx]').forEach((i) => { i.checked = false; S.excl.add(i.dataset.tx); }); pickCount(); return true;
-      case 'tool-print': printPage('print-tool', { groups: (G.res && G.res.title) || 'Grupės', lists: 'Sąrašas', risk: 'Rizikos sąrašas', cal: 'Kalendorius' }[el.dataset.t] + ' · ' + comName(cid())); return true;
+      case 'tool-print': printPage('print-tool', { groups: (G.res && G.res.title) || 'Grupės', lists: 'Sąrašas', risk: 'Rizikos sąrašas' }[el.dataset.t] + ' · ' + comName(cid())); return true;
       case 'tool-csv': { const c = csvFor(el.dataset.t); if (c) { logClient('export-tool', c[0]); download(`${c[0].replace(/[^\p{L}\p{N}]+/gu, '_')}-${today()}.csv`, c[1]); } return true; }
       case 'tool-merge': merge(el.closest('.dup')); return true;
       case 'tool-ignore': X.ignore.add(el.dataset.ck); try { localStorage.setItem(IGN_KEY, JSON.stringify([...X.ignore])); } catch (e) { /* ignore */ } render(); return true;
@@ -406,6 +454,12 @@ const Tools = (() => {
   document.addEventListener('change', (ev) => {
     const t = ev.target;
     if (t.dataset && t.dataset.tx !== undefined) { if (t.checked) S.excl.delete(t.dataset.tx); else S.excl.add(t.dataset.tx); pickCount(); return; }
+    if (t.dataset && t.dataset.lcol !== undefined) {
+      const c = L.cols[Number(t.dataset.lcol)];
+      if (c && (t.dataset.lf === 'n' || t.dataset.lf === 'w')) c[t.dataset.lf] = t.value;
+      render(); return;
+    }
+    if (t.dataset && ['hNr', 'hName', 'hGrade'].includes(t.dataset.lh)) { L[t.dataset.lh] = t.value; render(); return; }
     if (!t.dataset || !t.dataset.tool) return;
     const [o, k] = t.dataset.tool.split('.');
     if (!OBJ[o]) return;
@@ -417,5 +471,5 @@ const Tools = (() => {
 
   function reset(hard) { saved = null; savedSt = 'idle'; savedErr = ''; tpls = []; if (hard) { G.res = null; D.drawn = []; D.hist = []; D.last = []; S.excl.clear(); S.src = 'all'; S.grade = ''; L.tpl = ''; } }
 
-  return { render: renderPage, act, reset };
+  return { render: renderPage, act, reset, calendar: calendarCard };
 })();
