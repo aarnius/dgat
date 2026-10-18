@@ -16,9 +16,9 @@
   color-scheme: light;
 }
 [data-theme="dark"] {
-  --bg: #0b0d1a;
+  --bg: #0f132a;
   --glow1: rgba(99, 102, 241, 0.22);
-  --glow2: rgba(236, 72, 153, 0.10);
+  --glow2: rgba(165, 79, 218, 0.1);
   --surface: #141731;
   --surface-2: #1a1e3d;
   --line: #262a52;

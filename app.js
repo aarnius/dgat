@@ -1,5 +1,5 @@
 /* Attendance Tracker - single-page app, data stored in this browser (localStorage). */
-const APP_VERSION = '6 · Komitetai + klasės'; // rodoma skiltyje „Duomenys“ ir prisijungimo lange
+const APP_VERSION = '7 · Keli komitetai'; // rodoma skiltyje „Duomenys“ ir prisijungimo lange
 const KEY = 'attendance-tracker-v1';
 const THEME_KEY = 'attendance-theme';
 const STATUS = {
@@ -90,10 +90,27 @@ function toast(msg) {
   setTimeout(() => el.remove(), 2600);
 }
 
+/* Mokinys gali priklausyti keliems komitetams (classIds). Senuose duomenyse buvo vienas classId. */
+const normStudent = (s) => Object.assign({}, s, { classIds: Array.isArray(s.classIds) ? s.classIds.slice() : (s.classId ? [s.classId] : []) });
+function wipeStudentRecords(sid) {
+  for (const c in state.records) { for (const d in state.records[c]) delete state.records[c][d][sid]; }
+}
+function removeCommittee(id) {
+  state.students = state.students.filter((s) => {
+    if (!(s.classIds || []).includes(id)) return true;
+    s.classIds = s.classIds.filter((x) => x !== id);
+    if (s.classIds.length) return true;
+    wipeStudentRecords(s.id);
+    return false;
+  });
+  state.classes = state.classes.filter((x) => x.id !== id);
+  delete state.records[id];
+  if (state.currentClassId === id) state.currentClassId = state.classes[0] ? state.classes[0].id : null;
+}
 function curClass() { return state.classes.find((c) => c.id === state.currentClassId) || null; }
 function classStudents() {
   return state.students
-    .filter((s) => s.classId === state.currentClassId)
+    .filter((s) => (s.classIds || []).includes(state.currentClassId))
     .sort((a, b) => fullName(a).localeCompare(fullName(b)));
 }
 
@@ -364,7 +381,7 @@ function renderStudents() {
       `<td>${esc(s.grade || '')}</td><td class="hide-sm">${esc(s.parentEmail || '')}</td>` +
       `<td class="num">${st.A}</td><td class="num">${st.L}</td><td class="num">${rateBadge(st.rate)}</td>` +
       `<td class="row-actions"><button class="btn small" data-act="edit-student" data-sid="${s.id}">Redaguoti</button> ` +
-      `<button class="btn small danger" data-act="delete-student" data-sid="${s.id}">Ištrinti</button></td></tr>`;
+      `<button class="btn small danger" data-act="delete-student" data-sid="${s.id}">${(s.classIds || []).length > 1 ? 'Pašalinti' : 'Ištrinti'}</button></td></tr>`;
   }).join('');
   app.innerHTML = head('Mokiniai', `${all.length} komitete ${esc(curClass().name)}`,
     `<button class="btn" data-act="open-import">${ICON.upload} Importuoti</button><button class="btn primary" data-act="add-student">${ICON.plus} Pridėti mokinį</button>`) +
@@ -379,21 +396,29 @@ function renderStudents() {
 /* ---------- visi mokiniai iš visų komitetų ---------- */
 let allQ = '', allCom = '', allGrade = '';
 const gradeList = () => [...new Set(state.students.map((s) => (s.grade || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'lt', { numeric: true }));
+function statsAll(s) {
+  const t = { P: 0, A: 0, L: 0, E: 0 };
+  (s.classIds || []).forEach((c) => { const x = stats(c, s.id); t.P += x.P; t.A += x.A; t.L += x.L; t.E += x.E; });
+  const den = t.P + t.L + t.A;
+  t.rate = den ? Math.round(((t.P + t.L) / den) * 100) : null;
+  return t;
+}
 function renderAllStudents() {
   const q = allQ.trim().toLowerCase();
   const comName = new Map(state.classes.map((c) => [c.id, c.name]));
+  const comNames = (s) => (s.classIds || []).map((id) => comName.get(id)).filter(Boolean).sort((a, b) => a.localeCompare(b, 'lt', { numeric: true })).join(', ');
   const grades = gradeList();
   if (allCom && !comName.has(allCom)) allCom = '';
   if (allGrade && allGrade !== '-' && !grades.includes(allGrade)) allGrade = '';
   const list = state.students
-    .filter((s) => (!allCom || s.classId === allCom)
+    .filter((s) => (!allCom || (s.classIds || []).includes(allCom))
       && (!allGrade || (allGrade === '-' ? !s.grade : s.grade === allGrade))
-      && (!q || (displayName(s) + ' ' + (s.grade || '') + ' ' + (comName.get(s.classId) || '') + ' ' + (s.email || '') + ' ' + (s.parentEmail || '')).toLowerCase().includes(q)))
+      && (!q || (displayName(s) + ' ' + (s.grade || '') + ' ' + comNames(s) + ' ' + (s.email || '') + ' ' + (s.parentEmail || '')).toLowerCase().includes(q)))
     .sort((a, b) => fullName(a).localeCompare(fullName(b), 'lt'));
   const rows = list.map((s) => {
-    const st = stats(s.classId, s.id);
+    const st = statsAll(s);
     return `<tr><td><div class="who">${avatar(s)}<div><b>${esc(displayName(s))}</b><small>${esc(s.email || '')}</small></div></div></td>` +
-      `<td>${esc(s.grade || '–')}</td><td>${esc(comName.get(s.classId) || '–')}</td>` +
+      `<td>${esc(s.grade || '–')}</td><td>${esc(comNames(s) || '–')}</td>` +
       `<td class="hide-sm">${esc(s.parentEmail || '')}</td><td class="num">${st.A}</td><td class="num">${rateBadge(st.rate)}</td>` +
       `<td class="row-actions"><button class="btn small" data-act="edit-student" data-sid="${s.id}">Redaguoti</button></td></tr>`;
   }).join('');
@@ -405,7 +430,7 @@ function renderAllStudents() {
         <select id="allCom" aria-label="Komitetas">${opt('', 'Visi komitetai', allCom)}${state.classes.slice().sort(byClassName).map((c) => opt(c.id, c.name, allCom)).join('')}</select>
         <select id="allGrade" aria-label="Klasė">${opt('', 'Visos klasės', allGrade)}${grades.map((g) => opt(g, g, allGrade)).join('')}${opt('-', 'Be klasės', allGrade)}</select>
       </div>
-      ${list.length ? `<div class="table-wrap"><table><thead><tr><th>Mokinys</th><th>Klasė</th><th>Komitetas</th><th class="hide-sm">Tėvų el. paštas</th><th class="num">Nedalyvavo</th><th class="num">Rodiklis</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+      ${list.length ? `<div class="table-wrap"><table><thead><tr><th>Mokinys</th><th>Klasė</th><th>Komitetai</th><th class="hide-sm">Tėvų el. paštas</th><th class="num">Nedalyvavo</th><th class="num">Rodiklis</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
         : '<p class="muted">Mokinių nerasta.</p>'}
     </div>`;
 }
@@ -457,7 +482,7 @@ function nextClassName(name) {
 function renderClasses() {
   const list = state.classes.slice().sort(byClassName);
   const rows = list.map((c) => {
-    const n = state.students.filter((s) => s.classId === c.id).length;
+    const n = state.students.filter((s) => (s.classIds || []).includes(c.id)).length;
     return `<tr><td><b>${esc(c.name)}</b></td><td class="num">${n}</td><td class="row-actions"><button class="btn small" data-act="rename-class-id" data-cid="${c.id}">Pervadinti</button> <button class="btn small danger" data-act="delete-class-id" data-cid="${c.id}">Ištrinti</button></td></tr>`;
   }).join('');
   app.innerHTML = head('Komitetai', `Iš viso komitetų: ${list.length}`,
@@ -507,22 +532,26 @@ function openStudentDialog(s) {
   form.parentEmail.value = s ? s.parentEmail || '' : '';
   form.notes.value = s ? s.notes || '' : '';
   form.grade.value = s ? s.grade || '' : '';
+  const sel = s ? (s.classIds || []) : [state.currentClassId];
+  document.getElementById('comPick').innerHTML = '<legend>Komitetai (galima pasirinkti kelis)</legend>' + state.classes.slice().sort(byClassName).map((c) => `<label class="check"><input type="checkbox" name="com" value="${c.id}" ${sel.includes(c.id) ? 'checked' : ''}> ${esc(c.name)}</label>`).join('');
   document.getElementById('gradeList').innerHTML = gradeList().map((g) => `<option value="${esc(g)}"></option>`).join('');
   dialog.showModal();
 }
-form.addEventListener('submit', () => {
+form.addEventListener('submit', (e) => {
   const data = {
     first: form.first.value.trim(), last: form.last.value.trim(), email: form.email.value.trim(),
     parentEmail: form.parentEmail.value.trim(), notes: form.notes.value.trim(), grade: form.grade.value.trim(),
   };
   if (!data.first || !Auth.can('students.edit')) return;
+  data.classIds = [...form.querySelectorAll('input[name="com"]:checked')].map((x) => x.value);
+  if (!data.classIds.length) { e.preventDefault(); alert('Pasirinkite bent vieną komitetą.'); return; }
   if (form.id.value) Object.assign(state.students.find((s) => s.id === form.id.value), data);
-  else state.students.push(Object.assign({ id: uid(), classId: state.currentClassId }, data));
+  else state.students.push(Object.assign({ id: uid() }, data));
   save(); render();
 });
 
 function addStudents(items) {
-  items.forEach((it) => state.students.push(Object.assign({ id: uid(), classId: state.currentClassId, first: '', last: '', email: '', parentEmail: '', notes: '', grade: '' }, it)));
+  items.forEach((it) => state.students.push(Object.assign({ id: uid(), classIds: [state.currentClassId], first: '', last: '', email: '', parentEmail: '', notes: '', grade: '' }, it)));
   save(); render();
 }
 
@@ -594,7 +623,7 @@ function doImport() {
 
 /* ---------- exports ---------- */
 function allAttendanceCSV(cid, from, to) {
-  const list = state.students.filter((s) => s.classId === cid).sort((a, b) => fullName(a).localeCompare(fullName(b)));
+  const list = state.students.filter((s) => (s.classIds || []).includes(cid)).sort((a, b) => fullName(a).localeCompare(fullName(b)));
   const days = Object.keys(state.records[cid] || {}).filter((d) => (!from || d >= from) && (!to || d <= to)).sort();
   const lines = [['Mokinys', 'Klasė', ...days, 'Dalyvavo', 'Nedalyvavo', 'Vėlavo', 'Pateisinta', 'Rodiklis %'].map(csvCell).join(',')];
   list.forEach((s) => {
@@ -632,11 +661,8 @@ document.addEventListener('click', (e) => {
     }
     case 'delete-class': {
       const c = curClass();
-      if (!confirm(`Ištrinti „${c.name}“ su visais mokiniais ir lankomumo įrašais?`)) break;
-      state.classes = state.classes.filter((x) => x.id !== c.id);
-      state.students = state.students.filter((s) => s.classId !== c.id);
-      delete state.records[c.id];
-      state.currentClassId = state.classes[0] ? state.classes[0].id : null;
+      if (!confirm(`Ištrinti komitetą „${c.name}“ ir jo lankomumo įrašus? Mokiniai, kurie yra tik šiame komitete, bus ištrinti; kituose komitetuose esantys liks.`)) break;
+      removeCommittee(c.id);
       save(); render(); break;
     }
     case 'mark': {
@@ -662,11 +688,8 @@ document.addEventListener('click', (e) => {
     }
     case 'delete-class-id': {
       const c = state.classes.find((x) => x.id === el.dataset.cid);
-      if (!c || !confirm(`Ištrinti „${c.name}“ su visais mokiniais ir lankomumo įrašais?`)) break;
-      state.classes = state.classes.filter((x) => x.id !== c.id);
-      state.students = state.students.filter((s) => s.classId !== c.id);
-      delete state.records[c.id];
-      if (state.currentClassId === c.id) state.currentClassId = state.classes[0] ? state.classes[0].id : null;
+      if (!c || !confirm(`Ištrinti komitetą „${c.name}“ ir jo lankomumo įrašus? Mokiniai, kurie yra tik šiame komitete, bus ištrinti; kituose komitetuose esantys liks.`)) break;
+      removeCommittee(c.id);
       save(); render(); break;
     }
     case 'close-import': importDlg.close(); break;
@@ -674,9 +697,14 @@ document.addEventListener('click', (e) => {
     case 'template': download('students-template.csv', 'Vardas,Pavardė,El. paštas,Tėvų el. paštas,Klasė\nAda,Lovelace,ada@example.com,tevai@example.com,7A\nAlan,Turing,,,7B\n'); break;
     case 'delete-student': {
       const s = state.students.find((x) => x.id === el.dataset.sid);
-      if (!confirm(`Ištrinti ${displayName(s)}?`)) break;
-      state.students = state.students.filter((x) => x.id !== s.id);
-      for (const d in state.records[s.classId] || {}) delete state.records[s.classId][d][s.id];
+      if ((s.classIds || []).length > 1) {
+        if (!confirm(`Pašalinti ${displayName(s)} iš komiteto „${curClass().name}“? Mokinys liks kituose komitetuose.`)) break;
+        s.classIds = s.classIds.filter((x) => x !== cid);
+      } else {
+        if (!confirm(`Ištrinti ${displayName(s)}?`)) break;
+        state.students = state.students.filter((x) => x.id !== s.id);
+        wipeStudentRecords(s.id);
+      }
       save(); render(); break;
     }
     case 'export-report': download(`attendance-${curClass().name.replace(/\W+/g, '_')}-${repFrom}_to_${repTo}.csv`, allAttendanceCSV(cid, repFrom, repTo)); break;
@@ -712,7 +740,7 @@ document.addEventListener('change', (e) => {
         const s = JSON.parse(text);
         if (!s || !Array.isArray(s.classes) || !Array.isArray(s.students) || typeof s.records !== 'object') throw new Error('bad');
         if (!confirm('Pakeisti VISUS serverio duomenis kopijos duomenimis?')) return;
-        state = s; if (!state.currentClassId && state.classes[0]) state.currentClassId = state.classes[0].id;
+        state = s; state.students = state.students.map(normStudent); if (!state.currentClassId && state.classes[0]) state.currentClassId = state.classes[0].id;
         save(); render();
       } catch (err) { alert('Tai nėra tinkama atsarginė kopija.'); }
     });

@@ -15,8 +15,8 @@ const Sync = (() => {
 
   /* ---------- skirtumų skaičiavimas ---------- */
   const sigC = (c) => JSON.stringify([c.id, c.name]);
-  const sigS = (s) => JSON.stringify([s.id, s.classId, s.first || '', s.last || '', s.email || '', s.parentEmail || '', s.notes || '', s.grade || '']);
-  const stud = (s) => ({ id: s.id, classId: s.classId, first: s.first || '', last: s.last || '', email: s.email || '', parentEmail: s.parentEmail || '', notes: s.notes || '', grade: s.grade || '' });
+  const sigS = (s) => JSON.stringify([s.id, (s.classIds || []).slice().sort(), s.first || '', s.last || '', s.email || '', s.parentEmail || '', s.notes || '', s.grade || '']);
+  const stud = (s) => ({ id: s.id, classIds: (s.classIds || []).slice().sort(), first: s.first || '', last: s.last || '', email: s.email || '', parentEmail: s.parentEmail || '', notes: s.notes || '', grade: s.grade || '' });
   function flat(st) {
     const m = new Map();
     for (const c in st.records) for (const d in st.records[c]) for (const sid in st.records[c][d]) {
@@ -81,7 +81,7 @@ const Sync = (() => {
     const r = await api('/api/state');
     const recs = {};
     r.records.forEach((x) => { ((recs[x.c] = recs[x.c] || {})[x.d] = recs[x.c][x.d] || {})[x.sid] = { s: x.s, n: x.n }; });
-    const next = { classes: r.classes, students: r.students, records: recs, currentClassId: null };
+    const next = { classes: r.classes, students: r.students.map(normStudent), records: recs, currentClassId: null };
     const changed = signature(next) !== signature(state);
     let cur = null;
     try { cur = localStorage.getItem(CUR_KEY); } catch (e) { /* ignore */ }
@@ -115,7 +115,7 @@ const Sync = (() => {
       try { localStorage.setItem('attendance-legacy-declined', '1'); } catch (e) { /* ignore */ }
       return;
     }
-    state = { classes: old.classes, students: old.students, records: old.records, currentClassId: old.currentClassId || (old.classes[0] && old.classes[0].id) || null };
+    state = { classes: old.classes, students: old.students.map(normStudent), records: old.records, currentClassId: old.currentClassId || (old.classes[0] && old.classes[0].id) || null };
     queue(); await flush();
     try { localStorage.setItem(KEY + '-migrated', raw); localStorage.removeItem(KEY); } catch (e) { /* ignore */ }
   }
