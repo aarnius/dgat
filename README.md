@@ -28,6 +28,13 @@ Optional: in **Settings > Functions** choose a region close to your Neon databas
 - **Old browser data:** if the browser still holds data from the old no-server version, the superadmin is asked once after login whether to upload it.
 - **Users and roles:** *Vartotojai* tab for users, *Rolės* tab for the permission matrix. Superadmin always has every permission. Add your own with **Naujas leidimas** and check it in code with `Auth.can('custom.your.key')`; for server-side checks use `can(user, 'custom.your.key')` from `lib/server.js`.
 
+## Which classes a user can see
+
+- Permission **Matyti visas klases** (`classes.all`) on a role: everyone in that role sees every class. Existing roles keep it after the upgrade, so nothing disappears.
+- To limit someone to exact classes: untick that permission for their role (create a role such as "Klasės mokytojas"), then open the user in **Vartotojai** and tick the classes under **Priskirtos klasės**.
+- The server enforces this: a restricted user cannot read, change or delete data of other classes. A class they create themselves is added to their list automatically.
+- Click your name at the bottom of the sidebar to change your name, username and password. Role names (including Superadministratorius) can be renamed in **Rolės** with the pencil icon.
+
 ## Security notes
 
 - Passwords are hashed with scrypt on the server. Sessions are signed, HttpOnly, Secure cookies. Permissions are checked on the server for every save, user change and role change, so hiding a button in the browser is never the only protection.

@@ -1,12 +1,13 @@
 import { db, handler, HttpError, getUser, can, requireUser, requirePerm, hashPw, newId, USERNAME_RE, str, BUILTIN_PERMS } from '../lib/server.js';
 
 async function snapshot(sql) {
-  const [users, roles, customPerms] = await Promise.all([
-    sql`SELECT id, name, username, role_id AS "roleId", active FROM users ORDER BY name`,
+  const [users, roles, customPerms, classes] = await Promise.all([
+    sql`SELECT id, name, username, role_id AS "roleId", active, class_ids AS "classIds" FROM users ORDER BY name`,
     sql`SELECT id, name, system, perms FROM roles ORDER BY system DESC, name`,
     sql`SELECT key, label FROM custom_perms ORDER BY label`,
+    sql`SELECT id, name FROM classes ORDER BY name`,
   ]);
-  return { users, roles, customPerms };
+  return { users, roles, customPerms, classes };
 }
 const superCount = async (sql, exceptId) => (await sql`SELECT count(*)::int AS n FROM users WHERE role_id = 'superadmin' AND active AND id <> ${exceptId || ''}`)[0].n;
 
@@ -39,11 +40,18 @@ export default handler(async (req, res, body) => {
       if ((roleId === 'superadmin' || (existing && existing.role_id === 'superadmin')) && !isSuper) throw new HttpError(403, 'Tik superadministratorius gali valdyti superadministratorius.');
       if (existing && existing.role_id === 'superadmin' && (roleId !== 'superadmin' || !active) && (await superCount(sql, id)) === 0) throw new HttpError(400, 'Negalite pašalinti paskutinio aktyvaus superadministratoriaus.');
       if (existing && id === me.id && !active) throw new HttpError(400, 'Negalite išjungti savo paskyros.');
+      /* Klasių priskyrimą keisti gali tik tas, kuris pats mato visas klases. */
+      let classIds = null;
+      if (me.classIds === null && Array.isArray(body.classIds)) {
+        const want = body.classIds.map((x) => str(x, 40)).filter(Boolean);
+        classIds = (await sql`SELECT id FROM classes WHERE id = ANY(${want}::text[])`).map((x) => x.id);
+      }
       if (existing) {
-        if (pw) await sql`UPDATE users SET name=${name}, username=${username}, role_id=${roleId}, active=${active}, pw=${await hashPw(pw)} WHERE id=${id}`;
-        else await sql`UPDATE users SET name=${name}, username=${username}, role_id=${roleId}, active=${active} WHERE id=${id}`;
+        await sql`UPDATE users SET name=${name}, username=${username}, role_id=${roleId}, active=${active} WHERE id=${id}`;
+        if (pw) await sql`UPDATE users SET pw=${await hashPw(pw)} WHERE id=${id}`;
+        if (classIds) await sql`UPDATE users SET class_ids=${JSON.stringify(classIds)}::jsonb WHERE id=${id}`;
       } else {
-        await sql`INSERT INTO users (id, name, username, role_id, active, pw) VALUES (${newId('u')}, ${name}, ${username}, ${roleId}, ${active}, ${await hashPw(pw)})`;
+        await sql`INSERT INTO users (id, name, username, role_id, active, pw, class_ids) VALUES (${newId('u')}, ${name}, ${username}, ${roleId}, ${active}, ${await hashPw(pw)}, ${JSON.stringify(classIds || [])}::jsonb)`;
       }
       return snapshot(sql);
     }
@@ -74,7 +82,7 @@ export default handler(async (req, res, body) => {
       requirePerm(me, 'roles.manage');
       const name = str(body.name, 60), id = str(body.id, 40);
       if (!name) throw new HttpError(400, 'Įveskite rolės pavadinimą.');
-      await sql`UPDATE roles SET name = ${name} WHERE id = ${id} AND NOT system`;
+      await sql`UPDATE roles SET name = ${name} WHERE id = ${id}`;
       return snapshot(sql);
     }
 

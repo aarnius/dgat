@@ -266,7 +266,7 @@ function renderInner() {
   renderSide();
   if (!state.classes.length && !['data', 'users', 'roles'].includes(view)) {
     app.innerHTML = `<div class="card empty"><div class="big">${svg('<path d="M20 6 9 17l-5-5"/>', 30)}</div><h2>Sveiki atvykę į Lankomumo žurnalą</h2>
-      <p>Sukurkite pirmą klasę, tada pridėkite mokinius po vieną arba importuokite visą sąrašą per kelias sekundes.</p>
+      <p>${Auth.can('classes.manage') ? 'Sukurkite pirmą klasę, tada pridėkite mokinius po vieną arba importuokite visą sąrašą per kelias sekundes.' : 'Jums dar nepriskirta nė viena klasė. Kreipkitės į administratorių.'}</p>
       <button class="btn primary" data-act="new-class">${ICON.plus} Sukurti klasę</button></div>`;
     return;
   }

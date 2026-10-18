@@ -48,14 +48,18 @@ export default handler(async (req, res, body) => {
     case 'account': {
       const me = requireUser(await getUser(req));
       const name = str(body.name, 100), pw = String(body.password || '');
+      const username = str(body.username, 40).toLowerCase() || me.username;
       if (!name) throw new HttpError(400, 'Įveskite vardą.');
+      if (!USERNAME_RE.test(username)) throw new HttpError(400, 'Vartotojo vardas: bent 3 simboliai, be tarpų.');
+      const [dupe] = await sql`SELECT id FROM users WHERE username = ${username} AND id <> ${me.id}`;
+      if (dupe) throw new HttpError(400, 'Toks vartotojo vardas jau naudojamas.');
       if (pw) {
         if (pw.length < 8) throw new HttpError(400, 'Naujas slaptažodis per trumpas (bent 8 simboliai).');
         const [u] = await sql`SELECT pw FROM users WHERE id = ${me.id}`;
         if (!(await checkPw(String(body.current || ''), u.pw))) throw new HttpError(400, 'Dabartinis slaptažodis neteisingas.');
-        await sql`UPDATE users SET name = ${name}, pw = ${await hashPw(pw)} WHERE id = ${me.id}`;
+        await sql`UPDATE users SET name = ${name}, username = ${username}, pw = ${await hashPw(pw)} WHERE id = ${me.id}`;
       } else {
-        await sql`UPDATE users SET name = ${name} WHERE id = ${me.id}`;
+        await sql`UPDATE users SET name = ${name}, username = ${username} WHERE id = ${me.id}`;
       }
       return { user: publicUser(await getUser(req)) };
     }

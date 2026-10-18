@@ -255,3 +255,10 @@ code { background: var(--surface-2); border: 1px solid var(--line); padding: 1px
 .save-status[data-kind="saved"] { color: var(--p); }
 .save-status[data-kind="error"] { color: var(--a); }
 .auth-mode .save-status { display: none; }
+
+/* profilio mygtukas ir klasių pasirinkimas */
+.chip-edit { margin-left: auto; color: var(--muted); display: grid; place-items: center; }
+.userchip-btn:hover .chip-edit { color: var(--brand); }
+.classpick { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px 4px; margin: 0 0 12px; max-height: 180px; overflow: auto; }
+.classpick legend { font-size: 0.82rem; font-weight: 600; color: var(--muted); padding: 0 6px; }
+.classpick small { display: block; margin-bottom: 8px; }

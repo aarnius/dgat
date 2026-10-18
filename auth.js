@@ -4,7 +4,7 @@ const PERMS = [
   { g: 'Apžvalga', items: [['dashboard.view', 'Matyti apžvalgą']] },
   { g: 'Lankomumas', items: [['attendance.view', 'Matyti lankomumą'], ['attendance.mark', 'Žymėti lankomumą']] },
   { g: 'Mokiniai', items: [['students.view', 'Matyti mokinius'], ['students.edit', 'Pridėti ir redaguoti mokinius'], ['students.delete', 'Ištrinti mokinius'], ['students.import', 'Importuoti mokinius']] },
-  { g: 'Klasės', items: [['classes.manage', 'Kurti, pervadinti ir ištrinti klases']] },
+  { g: 'Klasės', items: [['classes.all', 'Matyti visas klases (kitaip – tik vartotojui priskirtas)'], ['classes.manage', 'Kurti, pervadinti ir ištrinti klases']] },
   { g: 'Ataskaitos', items: [['reports.view', 'Matyti ataskaitas'], ['reports.export', 'Eksportuoti ataskaitas (CSV)']] },
   { g: 'Duomenys', items: [['data.view', 'Atidaryti skiltį „Duomenys“'], ['data.backup', 'Atsisiųsti atsarginę kopiją'], ['data.restore', 'Atkurti iš kopijos'], ['data.wipe', 'Ištrinti visus duomenis']] },
   { g: 'Administravimas', items: [['users.manage', 'Valdyti vartotojus'], ['roles.manage', 'Valdyti roles ir leidimus']] },
@@ -93,7 +93,8 @@ const Auth = (() => {
   function userChip() {
     if (!me) return '';
     const out = svg('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/>');
-    return `<div class="userchip"><button class="userchip-btn" data-act="my-account" title="Mano paskyra">${avatar({ first: me.name })}<span class="hide-sm"><b>${esc(me.name)}</b><small class="muted">${esc(me.roleName || '')}</small></span></button>
+    const pen = svg('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>', 15);
+    return `<div class="userchip"><button class="userchip-btn" data-act="my-account" title="Keisti vardą ir slaptažodį">${avatar({ first: me.name })}<span class="hide-sm"><b>${esc(me.name)}</b><small class="muted">${esc(me.roleName || '')}</small></span><span class="chip-edit" aria-hidden="true">${pen}</span></button>
       <button class="icon-btn" data-act="logout" title="Atsijungti" aria-label="Atsijungti">${out}</button></div>`;
   }
 
@@ -142,6 +143,10 @@ const Auth = (() => {
         <label>Rolė<select name="roleId">${admin.roles.map((r) => `<option value="${r.id}" ${edit && u.roleId === r.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select></label>
         <label>${edit ? 'Naujas slaptažodis (palikite tuščią, jei nekeičiate)' : 'Slaptažodis (bent 8 simboliai)'}<input name="password" type="password" autocomplete="new-password" ${edit ? '' : 'required minlength="8"'}></label>
         <label class="check"><input type="checkbox" name="active" ${!edit || u.active ? 'checked' : ''}> Paskyra aktyvi</label>
+        ${me.classIds === null ? `<fieldset class="classpick"><legend>Priskirtos klasės</legend>
+          <small class="muted">Taikoma, jei vartotojo rolė neturi leidimo „Matyti visas klases“.</small>
+          ${admin.classes.length ? admin.classes.map((c) => `<label class="check"><input type="checkbox" name="cls" value="${c.id}" ${edit && (u.classIds || []).includes(c.id) ? 'checked' : ''}> ${esc(c.name)}</label>`).join('') : '<small class="muted">Klasių dar nėra.</small>'}
+        </fieldset>` : ''}
         <div class="form-err" role="alert"></div>
         <div class="dlg-actions"><button type="button" class="btn" data-act="close-auth">Atšaukti</button><button type="submit" class="btn primary">Išsaugoti</button></div>
       </form></div>`;
@@ -151,6 +156,7 @@ const Auth = (() => {
     dlg.innerHTML = `<div class="dlg"><div class="dlg-head"><h3>Mano paskyra</h3><button type="button" class="icon-btn" data-act="close-auth" aria-label="Uždaryti">&times;</button></div>
       <form data-form="account">
         <label>Vardas ir pavardė<input name="name" required value="${esc(me.name)}"></label>
+        <label>Vartotojo vardas (prisijungimui)<input name="username" required autocapitalize="none" spellcheck="false" value="${esc(me.username)}"></label>
         <label>Dabartinis slaptažodis (jei keičiate)<input name="current" type="password" autocomplete="current-password"></label>
         <label>Naujas slaptažodis (bent 8 simboliai)<input name="password" type="password" autocomplete="new-password"></label>
         <div class="form-err" role="alert"></div>
@@ -166,8 +172,7 @@ const Auth = (() => {
     const cols = admin.roles.length + 1;
     const th = admin.roles.map((r) => {
       const n = admin.users.filter((u) => u.roleId === r.id).length;
-      return `<th class="num role-col"><div class="role-h"><b>${esc(r.name)}</b><small class="muted">vartotojų: ${n}</small>${r.system ? '<small class="muted">užrakinta</small>'
-        : `<span><button class="link-btn mini" data-act="rename-role" data-rid="${r.id}" title="Pervadinti">&#9998;</button><button class="link-btn mini danger" data-act="delete-role" data-rid="${r.id}" title="Ištrinti">&times;</button></span>`}</div></th>`;
+      return `<th class="num role-col"><div class="role-h"><b>${esc(r.name)}</b><small class="muted">vartotojų: ${n}</small>${r.system ? '<small class="muted">teisės užrakintos</small>' : ''}<span><button class="link-btn mini" data-act="rename-role" data-rid="${r.id}" title="Pervadinti">&#9998;</button>${r.system ? '' : `<button class="link-btn mini danger" data-act="delete-role" data-rid="${r.id}" title="Ištrinti">&times;</button>`}</span></div></th>`;
     }).join('');
     const body = groups.map((g) => `<tr class="grp"><td colspan="${cols}">${esc(g.g)}</td></tr>` + g.items.map(([k, l, custom]) =>
       `<tr><td>${esc(l)} <code>${esc(k)}</code>${custom ? ` <button class="link-btn mini danger" data-act="delete-perm" data-key="${esc(k)}" title="Pašalinti leidimą">&times;</button>` : ''}</td>` +
@@ -237,10 +242,10 @@ const Auth = (() => {
         const r = await api('/api/auth', { action: 'setup', name: v('name'), username: v('username'), password: v('password') });
         me = r.user; needsSetup = false; await Sync.pull(); await Sync.migrateLegacy(); render();
       } else if (kind === 'user') {
-        admin = await api('/api/admin', { action: 'user-save', id: v('id'), name: v('name'), username: v('username'), roleId: v('roleId'), password: v('password'), active: f.elements.active.checked });
+        admin = await api('/api/admin', { action: 'user-save', id: v('id'), name: v('name'), username: v('username'), roleId: v('roleId'), password: v('password'), active: f.elements.active.checked, classIds: f.querySelector('.classpick') ? [...f.querySelectorAll('input[name=cls]:checked')].map((x) => x.value) : undefined });
         await refreshMe(); dlg.close(); render(); toast('Vartotojas išsaugotas');
       } else if (kind === 'account') {
-        const r = await api('/api/auth', { action: 'account', name: v('name'), current: v('current'), password: v('password') });
+        const r = await api('/api/auth', { action: 'account', name: v('name'), username: v('username'), current: v('current'), password: v('password') });
         me = r.user; dlg.close(); render(); toast('Paskyra atnaujinta');
       }
     } catch (ex) { err(ex.message); }
