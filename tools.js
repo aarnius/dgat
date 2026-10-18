@@ -13,8 +13,8 @@ const Tools = (() => {
   const L = { tpl: '', title: '', sub: 'Data: ____________________', hNr: 'Nr.', hName: 'Vardas, pavardė', hGrade: 'Klasė', num: true, grade: true, cols: [{ n: 'Parašas', w: 'xl' }], extra: 0, rowh: 'normal', fs: 'm', land: false };
   const R = { scope: 'com', from: '', to: '', thr: 80, minDays: 3, streak: 3, acts: true };
   const X = { fuzzy: false, ignore: loadIgn() };
-  const C = { m: '' };
-  const OBJ = { S, G, D, L, R, X };
+  const C = { m: '', mode: 'com' };
+  const OBJ = { S, G, D, L, R, X, C };
   let saved = null, savedSt = 'idle', savedErr = '', tpls = [];
 
   const cid = () => state.currentClassId;
@@ -264,22 +264,31 @@ const Tools = (() => {
   function calendarCard() {
     if (!cid()) return '';
     if (!C.m) C.m = today().slice(0, 7);
+    const canAll = Auth.can('calendar.all');
+    const all = canAll && C.mode === 'all'; // bendras visų matomų komitetų kalendorius
     const [y, m] = C.m.split('-').map(Number);
     const days = new Date(y, m, 0).getDate(), lead = (new Date(y, m - 1, 1).getDay() + 6) % 7; // savaitė prasideda pirmadieniu
-    const t = today(), recs = state.records[cid()] || {};
+    const t = today();
+    const coms = all ? state.classes.slice().sort((a, b) => a.name.localeCompare(b.name, 'lt', { numeric: true })) : state.classes.filter((c) => c.id === cid());
     const canActs = Auth.can('activities.view');
     let cells = '<div class="cal-day out"></div>'.repeat(lead), nSess = 0;
     for (let n = 1; n <= days; n++) {
       const d = `${y}-${pad2(m)}-${pad2(n)}`;
-      const ss = canActs ? Acts.sessionsOn(cid(), d) : [];
+      const ss = [];
+      let marked = 0;
+      coms.forEach((c) => {
+        if (canActs) Acts.sessionsOn(c.id, d).forEach((s) => ss.push({ s, com: c.name }));
+        const day = (state.records[c.id] || {})[d];
+        if (day) for (const sid in day) if (day[sid] && day[sid].s) marked++;
+      });
+      if (all) ss.sort((a, b) => (a.s.from || '').localeCompare(b.s.from || '') || a.com.localeCompare(b.com, 'lt', { numeric: true }));
       nSess += ss.length;
-      const day = recs[d] || {};
-      const marked = Object.keys(day).filter((sid) => day[sid] && day[sid].s).length;
       cells += `<div class="cal-day${d === t ? ' today' : ''}"><div class="cal-num"><span>${n}</span>${marked ? `<span class="cal-att" title="Dienos lankomume pažymėta: ${marked}">✓ ${marked}</span>` : ''}</div>` +
-        ss.map((s) => `<button class="cal-ev" data-act="sess-mark" data-ssid="${s.id}" title="${esc(s.act.name + (Acts.hhmm(s) ? ' · ' + Acts.hhmm(s) : '') + (s.note ? ' · ' + s.note : ''))}">${s.from ? `<b>${esc(s.from)}</b> ` : ''}${esc(s.act.name)}</button>`).join('') + '</div>';
+        ss.map(({ s, com }) => `<button class="cal-ev" data-act="sess-mark" data-ssid="${s.id}" title="${esc((all ? com + ' · ' : '') + s.act.name + (Acts.hhmm(s) ? ' · ' + Acts.hhmm(s) : '') + (s.note ? ' · ' + s.note : ''))}">${s.from ? `<b>${esc(s.from)}</b> ` : ''}${all ? `<small>${esc(com)}:</small> ` : ''}${esc(s.act.name)}</button>`).join('') + '</div>';
     }
-    return `<div class="card no-print"><div class="tool-bar"><div><h2>Kalendorius · ${MONTHS[m - 1]} ${y}</h2><p class="sub" style="margin:0">${esc(comName(cid()))} · užsiėmimų: ${nSess}. Paspaudus užsiėmimą atidaromas jo žymėjimas.</p></div>
-      <div class="actions"><button class="btn small" data-act="tool-cal" data-d="-1" aria-label="Ankstesnis mėnuo">&larr;</button><button class="btn small" data-act="tool-cal" data-d="0">Šiandien</button><button class="btn small" data-act="tool-cal" data-d="1" aria-label="Kitas mėnuo">&rarr;</button></div></div>
+    const modeSel = canAll ? `<select data-tool="C.mode" aria-label="Kalendoriaus apimtis"><option value="com" ${all ? '' : 'selected'}>${esc(comName(cid()))}</option><option value="all" ${all ? 'selected' : ''}>Visi komitetai</option></select>` : '';
+    return `<div class="card no-print"><div class="tool-bar"><div><h2>Kalendorius · ${MONTHS[m - 1]} ${y}</h2><p class="sub" style="margin:0">${all ? 'Visi komitetai' : esc(comName(cid()))} · užsiėmimų: ${nSess}. Paspaudus užsiėmimą atidaromas jo žymėjimas.</p></div>
+      <div class="actions">${modeSel}<button class="btn small" data-act="tool-cal" data-d="-1" aria-label="Ankstesnis mėnuo">&larr;</button><button class="btn small" data-act="tool-cal" data-d="0">Šiandien</button><button class="btn small" data-act="tool-cal" data-d="1" aria-label="Kitas mėnuo">&rarr;</button></div></div>
       <div class="cal-grid">${['Pr', 'An', 'Tr', 'Kt', 'Pn', 'Št', 'Sk'].map((w) => `<div class="cal-wd">${w}</div>`).join('')}${cells}</div></div>`;
   }
 
