@@ -15,8 +15,8 @@ const Sync = (() => {
 
   /* ---------- skirtumų skaičiavimas ---------- */
   const sigC = (c) => JSON.stringify([c.id, c.name]);
-  const sigS = (s) => JSON.stringify([s.id, s.classId, s.first || '', s.last || '', s.email || '', s.parentEmail || '', s.notes || '']);
-  const stud = (s) => ({ id: s.id, classId: s.classId, first: s.first || '', last: s.last || '', email: s.email || '', parentEmail: s.parentEmail || '', notes: s.notes || '' });
+  const sigS = (s) => JSON.stringify([s.id, s.classId, s.first || '', s.last || '', s.email || '', s.parentEmail || '', s.notes || '', s.grade || '']);
+  const stud = (s) => ({ id: s.id, classId: s.classId, first: s.first || '', last: s.last || '', email: s.email || '', parentEmail: s.parentEmail || '', notes: s.notes || '', grade: s.grade || '' });
   function flat(st) {
     const m = new Map();
     for (const c in st.records) for (const d in st.records[c]) for (const sid in st.records[c][d]) {

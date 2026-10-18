@@ -1,5 +1,5 @@
 /* Attendance Tracker - single-page app, data stored in this browser (localStorage). */
-const APP_VERSION = '5 · Klasės + telefonas'; // rodoma skiltyje „Duomenys“ ir prisijungimo lange
+const APP_VERSION = '6 · Komitetai + klasės'; // rodoma skiltyje „Duomenys“ ir prisijungimo lange
 const KEY = 'attendance-tracker-v1';
 const THEME_KEY = 'attendance-theme';
 const STATUS = {
@@ -192,6 +192,7 @@ function parseImport(text) {
     const iLast = find(/last|surname|family|pavard/);
     const iFull = find(/^(full\s*)?name$|^student|^mokin/);
     const iParent = find(/parent|guardian|tėv|globėj/);
+    const iGrade = find(/klas|class|grade/);
     const iEmail = head.findIndex((h) => /mail|paštas/.test(h) && !/parent|guardian|tėv|globėj/.test(h));
     items = rows.slice(1).map((r) => {
       const cell = (i) => (i >= 0 ? (r[i] || '').trim() : '');
@@ -200,21 +201,21 @@ function parseImport(text) {
         const n = parseName(cell(iFull)) || { first: '', last: '' };
         first = n.first; last = n.last;
       }
-      return { first, last, email: cell(iEmail), parentEmail: cell(iParent) };
+      return { first, last, email: cell(iEmail), parentEmail: cell(iParent), grade: cell(iGrade) };
     });
   } else if (rows[0].length === 1) {
     // one name per line: use the raw lines so "Last, First" isn't split into columns
-    items = text.split(/\r?\n/).map(parseName).filter(Boolean).map((n) => Object.assign({ email: '', parentEmail: '' }, n));
+    items = text.split(/\r?\n/).map(parseName).filter(Boolean).map((n) => Object.assign({ email: '', parentEmail: '', grade: '' }, n));
   } else {
-    items = rows.map((r) => ({ first: (r[0] || '').trim(), last: (r[1] || '').trim(), email: (r[2] || '').trim(), parentEmail: (r[3] || '').trim() }));
+    items = rows.map((r) => ({ first: (r[0] || '').trim(), last: (r[1] || '').trim(), email: (r[2] || '').trim(), parentEmail: (r[3] || '').trim(), grade: (r[4] || '').trim() }));
   }
   return items.filter((x) => x.first || x.last);
 }
 const keyOf = (s) => (s.first + '|' + s.last).toLowerCase().trim();
 
 /* ---------- rendering ---------- */
-const NAV = [['dashboard', 'Apžvalga', ICON.dash], ['attendance', 'Lankomumas', ICON.check], ['students', 'Mokiniai', ICON.users], ['classes', 'Klasės', ICON.book], ['reports', 'Ataskaitos', ICON.chart], ['data', 'Duomenys', ICON.db], ['users', 'Vartotojai', ICON.users], ['roles', 'Rolės', ICON.shield]];
-const VIEW_PERM = { dashboard: 'dashboard.view', attendance: 'attendance.view', students: 'students.view', classes: 'classes.manage', reports: 'reports.view', data: 'data.view', users: 'users.manage', roles: 'roles.manage' };
+const NAV = [['dashboard', 'Apžvalga', ICON.dash], ['attendance', 'Lankomumas', ICON.check], ['students', 'Mokiniai', ICON.users], ['allstudents', 'Visi mokiniai', ICON.users], ['classes', 'Komitetai', ICON.book], ['reports', 'Ataskaitos', ICON.chart], ['data', 'Duomenys', ICON.db], ['users', 'Vartotojai', ICON.users], ['roles', 'Rolės', ICON.shield]];
+const VIEW_PERM = { dashboard: 'dashboard.view', attendance: 'attendance.view', students: 'students.view', allstudents: 'students.view', classes: 'classes.manage', reports: 'reports.view', data: 'data.view', users: 'users.manage', roles: 'roles.manage' };
 const ACT_PERM = {
   'new-class': 'classes.manage', 'rename-class': 'classes.manage', 'delete-class': 'classes.manage',
   mark: 'attendance.mark', 'all-present': 'attendance.mark', 'clear-day': 'attendance.mark',
@@ -238,8 +239,8 @@ function renderSide() {
   const dark = currentTheme() === 'dark';
   side.innerHTML = `
     <div class="brand"><span class="logo">${ICON.check}</span>Lankomumas</div>
-    ${has ? `<div class="class-box"><div class="lbl">Klasė</div>
-      <select id="classSelect" aria-label="Klasė">${state.classes.map((c) => `<option value="${c.id}" ${c.id === state.currentClassId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
+    ${has ? `<div class="class-box"><div class="lbl">Komitetas</div>
+      <select id="classSelect" aria-label="Komitetas">${state.classes.map((c) => `<option value="${c.id}" ${c.id === state.currentClassId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
       <div class="class-links"><button class="link-btn" data-act="new-class">+ Nauja</button><button class="link-btn" data-act="rename-class">Pervadinti</button><button class="link-btn danger" data-act="delete-class">Ištrinti</button></div></div>` : ''}
     <nav class="nav">${NAV.filter(([k]) => Auth.can(VIEW_PERM[k])).map(([k, l, ic]) => `<button class="${view === k ? 'active' : ''}" data-act="tab" data-view="${k}">${ic}<span>${l}</span></button>`).join('')}</nav>
     <div class="side-foot">${Auth.userChip()}<button class="btn small" data-act="theme" aria-label="Keisti temą">${dark ? ICON.sun : ICON.moon}<span class="hide-sm">${dark ? 'Šviesi' : 'Tamsi'} tema</span></button></div>`;
@@ -269,11 +270,11 @@ function renderInner() {
   renderSide();
   if (!state.classes.length && !['data', 'users', 'roles', 'classes'].includes(view)) {
     app.innerHTML = `<div class="card empty"><div class="big">${svg('<path d="M20 6 9 17l-5-5"/>', 30)}</div><h2>Sveiki atvykę į Lankomumo žurnalą</h2>
-      <p>${Auth.can('classes.manage') ? 'Sukurkite pirmą klasę, tada pridėkite mokinius po vieną arba importuokite visą sąrašą per kelias sekundes.' : 'Jums dar nepriskirta nė viena klasė. Kreipkitės į administratorių.'}</p>
-      <button class="btn primary" data-act="new-class">${ICON.plus} Sukurti klasę</button></div>`;
+      <p>${Auth.can('classes.manage') ? 'Sukurkite pirmą komitetą, tada pridėkite mokinius po vieną arba importuokite visą sąrašą per kelias sekundes.' : 'Jums dar nepriskirtas nė vienas komitetas. Kreipkitės į administratorių.'}</p>
+      <button class="btn primary" data-act="new-class">${ICON.plus} Sukurti komitetą</button></div>`;
     return;
   }
-  ({ dashboard: renderDashboard, students: renderStudents, attendance: renderAttendance, reports: renderReports, data: renderData, classes: renderClasses, users: Auth.renderUsers, roles: Auth.renderRoles })[view]();
+  ({ dashboard: renderDashboard, students: renderStudents, allstudents: renderAllStudents, attendance: renderAttendance, reports: renderReports, data: renderData, classes: renderClasses, users: Auth.renderUsers, roles: Auth.renderRoles })[view]();
   window.scrollTo(0, y);
 }
 
@@ -309,9 +310,9 @@ function renderDashboard() {
   app.innerHTML = head(`${greeting()}, ${esc(Auth.user().name.split(' ')[0])} 👋`, `${esc(curClass().name)} · ${prettyDate(t)}`,
     `<button class="btn" data-act="open-import">${ICON.upload} Importuoti mokinius</button><button class="btn primary" data-act="go-attendance">${ICON.check} Žymėti lankomumą</button>`) +
     `<div class="stats">
-      <div class="stat" style="--c:var(--brand)"><div class="k">Mokiniai</div><div class="v">${list.length}</div><div class="h">šioje klasėje</div></div>
+      <div class="stat" style="--c:var(--brand)"><div class="k">Mokiniai</div><div class="v">${list.length}</div><div class="h">šiame komitete</div></div>
       <div class="stat" style="--c:var(--p)"><div class="k">Šiandien dalyvavo</div><div class="v">${todayRate == null ? '–' : todayRate + '%'}</div><div class="h">pažymėta ${marked} iš ${list.length}</div></div>
-      <div class="stat" style="--c:var(--a)"><div class="k">Praleidimai šį mėnesį</div><div class="v">${abs}</div><div class="h">visoje klasėje</div></div>
+      <div class="stat" style="--c:var(--a)"><div class="k">Praleidimai šį mėnesį</div><div class="v">${abs}</div><div class="h">visame komitete</div></div>
       <div class="stat" style="--c:var(--l)"><div class="k">Reikia dėmesio</div><div class="v">${risk.length}</div><div class="h">lankomumas žemiau 80%</div></div>
     </div>
     <div class="two-col">
@@ -331,7 +332,7 @@ function renderAttendance() {
     const r = getRec(cid, attDate, s.id);
     const btns = Object.keys(STATUS).map((k) =>
       `<button class="${STATUS[k].cls} ${r.s === k ? 'on' : ''}" title="${STATUS[k].label}" data-act="mark" data-sid="${s.id}" data-s="${k}"><span class="lg">${STATUS[k].label}</span><span class="sm">${STATUS[k].short}</span></button>`).join('');
-    return `<tr><td><div class="who">${avatar(s)}<div><b>${esc(displayName(s))}</b></div></div></td><td><div class="seg">${btns}</div></td>` +
+    return `<tr><td><div class="who">${avatar(s)}<div><b>${esc(displayName(s))}</b>${s.grade ? `<small>${esc(s.grade)} kl.</small>` : ''}</div></div></td><td><div class="seg">${btns}</div></td>` +
       `<td class="hide-sm"><input class="note-input" data-note="${s.id}" placeholder="Pridėti pastabą" value="${esc(r.n)}"></td></tr>`;
   }).join('');
   app.innerHTML = head('Lankomumas', prettyDate(attDate),
@@ -348,7 +349,7 @@ function renderAttendance() {
         <span class="pill l"><i></i>Vėlavo ${c.L}</span><span class="pill e"><i></i>Pateisinta ${c.E}</span><span class="pill n"><i></i>Nepažymėta ${c.none}</span>
       </div>
       ${list.length ? `<div class="table-wrap"><table><thead><tr><th>Mokinys</th><th>Būsena</th><th class="hide-sm">Pastaba</th></tr></thead><tbody>${rows}</tbody></table></div>`
-        : `<div class="empty"><p>Šioje klasėje mokinių dar nėra.</p><button class="btn primary" data-act="open-import">${ICON.upload} Importuoti mokinius</button></div>`}
+        : `<div class="empty"><p>Šiame komitete mokinių dar nėra.</p><button class="btn primary" data-act="open-import">${ICON.upload} Importuoti mokinius</button></div>`}
     </div>`;
 }
 
@@ -360,18 +361,52 @@ function renderStudents() {
   const rows = list.map((s) => {
     const st = stats(cid, s.id);
     return `<tr><td><div class="who">${avatar(s)}<div><b>${esc(displayName(s))}</b><small>${esc(s.email || '')}</small></div></div></td>` +
-      `<td class="hide-sm">${esc(s.parentEmail || '')}</td>` +
+      `<td>${esc(s.grade || '')}</td><td class="hide-sm">${esc(s.parentEmail || '')}</td>` +
       `<td class="num">${st.A}</td><td class="num">${st.L}</td><td class="num">${rateBadge(st.rate)}</td>` +
       `<td class="row-actions"><button class="btn small" data-act="edit-student" data-sid="${s.id}">Redaguoti</button> ` +
       `<button class="btn small danger" data-act="delete-student" data-sid="${s.id}">Ištrinti</button></td></tr>`;
   }).join('');
-  app.innerHTML = head('Mokiniai', `${all.length} klasėje ${esc(curClass().name)}`,
+  app.innerHTML = head('Mokiniai', `${all.length} komitete ${esc(curClass().name)}`,
     `<button class="btn" data-act="open-import">${ICON.upload} Importuoti</button><button class="btn primary" data-act="add-student">${ICON.plus} Pridėti mokinį</button>`) +
     `<div class="card">
       <div class="actions" style="margin-bottom:12px"><input type="search" class="search" id="search" placeholder="Ieškoti mokinių" value="${esc(search)}"></div>
-      ${list.length ? `<div class="table-wrap"><table><thead><tr><th>Mokinys</th><th class="hide-sm">Tėvų el. paštas</th><th class="num">Nedalyvavo</th><th class="num">Vėlavo</th><th class="num">Rodiklis</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+      ${list.length ? `<div class="table-wrap"><table><thead><tr><th>Mokinys</th><th>Klasė</th><th class="hide-sm">Tėvų el. paštas</th><th class="num">Nedalyvavo</th><th class="num">Vėlavo</th><th class="num">Rodiklis</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
         : q ? '<p class="muted">Nieko nerasta.</p>'
-          : `<div class="empty"><div class="big">${ICON.users}</div><h2>Mokinių dar nėra</h2><p>Importuokite klasės sąrašą iš skaičiuoklės arba pridėkite mokinius po vieną.</p><button class="btn primary" data-act="open-import">${ICON.upload} Importuoti mokinius</button></div>`}
+          : `<div class="empty"><div class="big">${ICON.users}</div><h2>Mokinių dar nėra</h2><p>Importuokite komiteto sąrašą iš skaičiuoklės arba pridėkite mokinius po vieną.</p><button class="btn primary" data-act="open-import">${ICON.upload} Importuoti mokinius</button></div>`}
+    </div>`;
+}
+
+/* ---------- visi mokiniai iš visų komitetų ---------- */
+let allQ = '', allCom = '', allGrade = '';
+const gradeList = () => [...new Set(state.students.map((s) => (s.grade || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'lt', { numeric: true }));
+function renderAllStudents() {
+  const q = allQ.trim().toLowerCase();
+  const comName = new Map(state.classes.map((c) => [c.id, c.name]));
+  const grades = gradeList();
+  if (allCom && !comName.has(allCom)) allCom = '';
+  if (allGrade && allGrade !== '-' && !grades.includes(allGrade)) allGrade = '';
+  const list = state.students
+    .filter((s) => (!allCom || s.classId === allCom)
+      && (!allGrade || (allGrade === '-' ? !s.grade : s.grade === allGrade))
+      && (!q || (displayName(s) + ' ' + (s.grade || '') + ' ' + (comName.get(s.classId) || '') + ' ' + (s.email || '') + ' ' + (s.parentEmail || '')).toLowerCase().includes(q)))
+    .sort((a, b) => fullName(a).localeCompare(fullName(b), 'lt'));
+  const rows = list.map((s) => {
+    const st = stats(s.classId, s.id);
+    return `<tr><td><div class="who">${avatar(s)}<div><b>${esc(displayName(s))}</b><small>${esc(s.email || '')}</small></div></div></td>` +
+      `<td>${esc(s.grade || '–')}</td><td>${esc(comName.get(s.classId) || '–')}</td>` +
+      `<td class="hide-sm">${esc(s.parentEmail || '')}</td><td class="num">${st.A}</td><td class="num">${rateBadge(st.rate)}</td>` +
+      `<td class="row-actions"><button class="btn small" data-act="edit-student" data-sid="${s.id}">Redaguoti</button></td></tr>`;
+  }).join('');
+  const opt = (v, l, cur) => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${esc(l)}</option>`;
+  app.innerHTML = head('Visi mokiniai', `${list.length} iš ${state.students.length} mokinių visuose komitetuose`) +
+    `<div class="card">
+      <div class="actions" style="margin-bottom:12px">
+        <input type="search" class="search" id="allSearch" placeholder="Ieškoti mokinių" value="${esc(allQ)}">
+        <select id="allCom" aria-label="Komitetas">${opt('', 'Visi komitetai', allCom)}${state.classes.slice().sort(byClassName).map((c) => opt(c.id, c.name, allCom)).join('')}</select>
+        <select id="allGrade" aria-label="Klasė">${opt('', 'Visos klasės', allGrade)}${grades.map((g) => opt(g, g, allGrade)).join('')}${opt('-', 'Be klasės', allGrade)}</select>
+      </div>
+      ${list.length ? `<div class="table-wrap"><table><thead><tr><th>Mokinys</th><th>Klasė</th><th>Komitetas</th><th class="hide-sm">Tėvų el. paštas</th><th class="num">Nedalyvavo</th><th class="num">Rodiklis</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+        : '<p class="muted">Mokinių nerasta.</p>'}
     </div>`;
 }
 
@@ -425,10 +460,10 @@ function renderClasses() {
     const n = state.students.filter((s) => s.classId === c.id).length;
     return `<tr><td><b>${esc(c.name)}</b></td><td class="num">${n}</td><td class="row-actions"><button class="btn small" data-act="rename-class-id" data-cid="${c.id}">Pervadinti</button> <button class="btn small danger" data-act="delete-class-id" data-cid="${c.id}">Ištrinti</button></td></tr>`;
   }).join('');
-  app.innerHTML = head('Klasės', `Iš viso klasių: ${list.length}`,
-    `<button class="btn" data-act="open-promote">${ICON.upload} Perkelti į kitus metus</button><button class="btn primary" data-act="new-class">${ICON.plus} Nauja klasė</button>`) +
-    `<div class="card">${list.length ? `<div class="table-wrap"><table><thead><tr><th>Klasė</th><th class="num">Mokinių</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
-      : '<p class="muted">Klasių dar nėra. Spauskite „Nauja klasė“.</p>'}</div>`;
+  app.innerHTML = head('Komitetai', `Iš viso komitetų: ${list.length}`,
+    `<button class="btn primary" data-act="new-class">${ICON.plus} Naujas komitetas</button>`) +
+    `<div class="card">${list.length ? `<div class="table-wrap"><table><thead><tr><th>Komitetas</th><th class="num">Mokinių</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+      : '<p class="muted">Komitetų dar nėra. Spauskite „Naujas komitetas“.</p>'}</div>`;
 }
 function openPromote() {
   const rows = state.classes.slice().sort(byClassName).map((c) => {
@@ -471,12 +506,14 @@ function openStudentDialog(s) {
   form.email.value = s ? s.email || '' : '';
   form.parentEmail.value = s ? s.parentEmail || '' : '';
   form.notes.value = s ? s.notes || '' : '';
+  form.grade.value = s ? s.grade || '' : '';
+  document.getElementById('gradeList').innerHTML = gradeList().map((g) => `<option value="${esc(g)}"></option>`).join('');
   dialog.showModal();
 }
 form.addEventListener('submit', () => {
   const data = {
     first: form.first.value.trim(), last: form.last.value.trim(), email: form.email.value.trim(),
-    parentEmail: form.parentEmail.value.trim(), notes: form.notes.value.trim(),
+    parentEmail: form.parentEmail.value.trim(), notes: form.notes.value.trim(), grade: form.grade.value.trim(),
   };
   if (!data.first || !Auth.can('students.edit')) return;
   if (form.id.value) Object.assign(state.students.find((s) => s.id === form.id.value), data);
@@ -485,7 +522,7 @@ form.addEventListener('submit', () => {
 });
 
 function addStudents(items) {
-  items.forEach((it) => state.students.push(Object.assign({ id: uid(), classId: state.currentClassId, first: '', last: '', email: '', parentEmail: '', notes: '' }, it)));
+  items.forEach((it) => state.students.push(Object.assign({ id: uid(), classId: state.currentClassId, first: '', last: '', email: '', parentEmail: '', notes: '', grade: '' }, it)));
   save(); render();
 }
 
@@ -494,16 +531,16 @@ const importDlg = document.getElementById('importDialog');
 function openImport() {
   importDlg.innerHTML = `<div class="dlg">
     <div class="dlg-head"><h3>Importuoti mokinius</h3><button type="button" class="icon-btn" data-act="close-import" aria-label="Uždaryti">&times;</button></div>
-    <p class="muted" style="margin-top:0">Pridedama į <b>${esc(curClass().name)}</b>. Veikia su „Excel“, „Google Sheets“ ar bet kokiu klasės sąrašo eksportu.</p>
+    <p class="muted" style="margin-top:0">Pridedama į <b>${esc(curClass().name)}</b>. Veikia su „Excel“, „Google Sheets“ ar bet kokiu mokinių sąrašo eksportu.</p>
     <label class="drop" data-drop>
       <input type="file" id="importFile" accept=".csv,.tsv,.txt,text/csv,text/plain,text/tab-separated-values" hidden>
       ${ICON.upload}<b>Nuvilkite failą čia arba spustelėkite ir pasirinkite</b><span>.csv, .tsv arba .txt</span>
     </label>
     <div class="divider">arba įklijuokite</div>
-    <textarea id="importText" rows="5" placeholder="Įklijuokite eilutes iš skaičiuoklės arba po vieną vardą eilutėje:&#10;Ada Lovelace&#10;Alan Turing&#10;&#10;Arba su stulpeliais:&#10;Vardas, Pavardė, El. paštas, Tėvų el. paštas"></textarea>
+    <textarea id="importText" rows="5" placeholder="Įklijuokite eilutes iš skaičiuoklės arba po vieną vardą eilutėje:&#10;Ada Lovelace&#10;Alan Turing&#10;&#10;Arba su stulpeliais:&#10;Vardas, Pavardė, El. paštas, Tėvų el. paštas, Klasė"></textarea>
     <div id="importPreview"></div>
-    <label class="check"><input type="checkbox" id="importSkip" checked> Praleisti mokinius, kurie jau yra šioje klasėje</label>
-    <p class="muted" style="font-size:.8rem;margin:0">Patarimas: antraštės eilutė (Vardas, Pavardė, El. paštas, Tėvų el. paštas) aptinkama automatiškai. Tinka ir vienas vardų stulpelis.</p>
+    <label class="check"><input type="checkbox" id="importSkip" checked> Praleisti mokinius, kurie jau yra šiame komitete</label>
+    <p class="muted" style="font-size:.8rem;margin:0">Patarimas: antraštės eilutė (Vardas, Pavardė, El. paštas, Tėvų el. paštas, Klasė) aptinkama automatiškai. Tinka ir vienas vardų stulpelis.</p>
     <div class="dlg-actions">
       <button type="button" class="btn small" data-act="template">Atsisiųsti šabloną</button><span class="spacer"></span>
       <button type="button" class="btn" data-act="close-import">Atšaukti</button>
@@ -524,10 +561,10 @@ function updateImportPreview() {
   go.textContent = fresh.length ? `Importuoti: ${fresh.length}` : 'Importuoti';
   if (!text.trim()) { box.innerHTML = ''; return; }
   if (!items.length) { box.innerHTML = '<div class="preview"><div class="ph">Tekste mokinių nerasta.</div></div>'; return; }
-  box.innerHTML = `<div class="preview"><div class="ph">Rasta eilučių: ${items.length}${dupes ? ` · ${dupes} jau klasėje (praleista)` : ''}</div>
-    <table><thead><tr><th>Vardas</th><th>Pavardė</th><th>El. paštas</th><th class="hide-sm">Tėvų el. paštas</th></tr></thead><tbody>
-    ${items.slice(0, 5).map((x) => `<tr><td>${esc(x.first)}</td><td>${esc(x.last)}</td><td>${esc(x.email)}</td><td class="hide-sm">${esc(x.parentEmail)}</td></tr>`).join('')}
-    ${items.length > 5 ? `<tr><td colspan="4" class="muted">…ir dar ${items.length - 5}</td></tr>` : ''}</tbody></table></div>`;
+  box.innerHTML = `<div class="preview"><div class="ph">Rasta eilučių: ${items.length}${dupes ? ` · ${dupes} jau komitete (praleista)` : ''}</div>
+    <table><thead><tr><th>Vardas</th><th>Pavardė</th><th>El. paštas</th><th class="hide-sm">Tėvų el. paštas</th><th>Klasė</th></tr></thead><tbody>
+    ${items.slice(0, 5).map((x) => `<tr><td>${esc(x.first)}</td><td>${esc(x.last)}</td><td>${esc(x.email)}</td><td class="hide-sm">${esc(x.parentEmail)}</td><td>${esc(x.grade)}</td></tr>`).join('')}
+    ${items.length > 5 ? `<tr><td colspan="5" class="muted">…ir dar ${items.length - 5}</td></tr>` : ''}</tbody></table></div>`;
 }
 function loadImportFile(file) {
   if (!file) return;
@@ -559,11 +596,11 @@ function doImport() {
 function allAttendanceCSV(cid, from, to) {
   const list = state.students.filter((s) => s.classId === cid).sort((a, b) => fullName(a).localeCompare(fullName(b)));
   const days = Object.keys(state.records[cid] || {}).filter((d) => (!from || d >= from) && (!to || d <= to)).sort();
-  const lines = [['Mokinys', ...days, 'Dalyvavo', 'Nedalyvavo', 'Vėlavo', 'Pateisinta', 'Rodiklis %'].map(csvCell).join(',')];
+  const lines = [['Mokinys', 'Klasė', ...days, 'Dalyvavo', 'Nedalyvavo', 'Vėlavo', 'Pateisinta', 'Rodiklis %'].map(csvCell).join(',')];
   list.forEach((s) => {
     const cells = days.map((d) => getRec(cid, d, s.id).s);
     const t = stats(cid, s.id, from, to);
-    lines.push([displayName(s), ...cells, t.P, t.A, t.L, t.E, t.rate == null ? '' : t.rate].map(csvCell).join(','));
+    lines.push([displayName(s), s.grade || '', ...cells, t.P, t.A, t.L, t.E, t.rate == null ? '' : t.rate].map(csvCell).join(','));
   });
   return lines.join('\n');
 }
@@ -584,7 +621,7 @@ document.addEventListener('click', (e) => {
       try { localStorage.setItem(THEME_KEY, currentTheme() === 'dark' ? 'light' : 'dark'); } catch (err) { /* ignore */ }
       applyTheme(); render(); break;
     case 'new-class': {
-      const name = (prompt('Klasės pavadinimas?') || '').trim();
+      const name = (prompt('Komiteto pavadinimas?') || '').trim();
       if (!name) break;
       const c = { id: uid(), name };
       state.classes.push(c); state.currentClassId = c.id; save(); render(); break;
@@ -634,23 +671,23 @@ document.addEventListener('click', (e) => {
     }
     case 'close-import': importDlg.close(); break;
     case 'do-import': doImport(); break;
-    case 'template': download('students-template.csv', 'Vardas,Pavardė,El. paštas,Tėvų el. paštas\nAda,Lovelace,ada@example.com,tevai@example.com\nAlan,Turing,,\n'); break;
+    case 'template': download('students-template.csv', 'Vardas,Pavardė,El. paštas,Tėvų el. paštas,Klasė\nAda,Lovelace,ada@example.com,tevai@example.com,7A\nAlan,Turing,,,7B\n'); break;
     case 'delete-student': {
       const s = state.students.find((x) => x.id === el.dataset.sid);
       if (!confirm(`Ištrinti ${displayName(s)}?`)) break;
       state.students = state.students.filter((x) => x.id !== s.id);
-      for (const d in state.records[cid] || {}) delete state.records[cid][d][s.id];
+      for (const d in state.records[s.classId] || {}) delete state.records[s.classId][d][s.id];
       save(); render(); break;
     }
     case 'export-report': download(`attendance-${curClass().name.replace(/\W+/g, '_')}-${repFrom}_to_${repTo}.csv`, allAttendanceCSV(cid, repFrom, repTo)); break;
     case 'export-all-csv': {
       const out = [];
-      state.classes.forEach((c) => { out.push('Klasė: ' + c.name, allAttendanceCSV(c.id), ''); });
+      state.classes.forEach((c) => { out.push('Komitetas: ' + c.name, allAttendanceCSV(c.id), ''); });
       download('attendance-all.csv', out.join('\n')); break;
     }
     case 'export-json': download(`attendance-backup-${today()}.json`, JSON.stringify(state, null, 2), 'application/json'); break;
     case 'wipe':
-      if (confirm('Ištrinti VISAS klases, mokinius ir lankomumą iš serverio (visiems vartotojams)?') && confirm('Šio veiksmo atšaukti negalima. Tikrai viską ištrinti?')) {
+      if (confirm('Ištrinti VISUS komitetus, mokinius ir lankomumą iš serverio (visiems vartotojams)?') && confirm('Šio veiksmo atšaukti negalima. Tikrai viską ištrinti?')) {
         state = { classes: [], students: [], records: {}, currentClassId: null }; save(); render();
       }
       break;
@@ -660,7 +697,9 @@ document.addEventListener('click', (e) => {
 
 document.addEventListener('change', (e) => {
   const t = e.target;
-  if (t.id === 'classSelect') { state.currentClassId = t.value; save(); render(); }
+  if (t.id === 'allCom') { allCom = t.value; render(); }
+  else if (t.id === 'allGrade') { allGrade = t.value; render(); }
+  else if (t.id === 'classSelect') { state.currentClassId = t.value; save(); render(); }
   else if (t.id === 'attDate') { if (t.value) { attDate = t.value; render(); } }
   else if (t.id === 'repFrom') { repFrom = t.value || repFrom; render(); }
   else if (t.id === 'repTo') { repTo = t.value || repTo; render(); }
@@ -686,6 +725,11 @@ document.addEventListener('input', (e) => {
     const pos = e.target.selectionStart;
     render();
     const el = document.getElementById('search'); el.focus(); el.setSelectionRange(pos, pos);
+  } else if (e.target.id === 'allSearch') {
+    allQ = e.target.value;
+    const pos = e.target.selectionStart;
+    render();
+    const el = document.getElementById('allSearch'); el.focus(); el.setSelectionRange(pos, pos);
   } else if (e.target.id === 'importText') updateImportPreview();
 });
 

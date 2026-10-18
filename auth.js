@@ -4,7 +4,7 @@ const PERMS = [
   { g: 'Apžvalga', items: [['dashboard.view', 'Matyti apžvalgą']] },
   { g: 'Lankomumas', items: [['attendance.view', 'Matyti lankomumą'], ['attendance.mark', 'Žymėti lankomumą']] },
   { g: 'Mokiniai', items: [['students.view', 'Matyti mokinius'], ['students.edit', 'Pridėti ir redaguoti mokinius'], ['students.delete', 'Ištrinti mokinius'], ['students.import', 'Importuoti mokinius']] },
-  { g: 'Klasės', items: [['classes.all', 'Matyti visas klases (kitaip – tik vartotojui priskirtas)'], ['classes.manage', 'Kurti, pervadinti ir ištrinti klases']] },
+  { g: 'Komitetai', items: [['classes.all', 'Matyti visus komitetus (kitaip – tik vartotojui priskirtus)'], ['classes.manage', 'Kurti, pervadinti ir ištrinti komitetus']] },
   { g: 'Ataskaitos', items: [['reports.view', 'Matyti ataskaitas'], ['reports.export', 'Eksportuoti ataskaitas (CSV)']] },
   { g: 'Duomenys', items: [['data.view', 'Atidaryti skiltį „Duomenys“'], ['data.backup', 'Atsisiųsti atsarginę kopiją'], ['data.restore', 'Atkurti iš kopijos'], ['data.wipe', 'Ištrinti visus duomenis']] },
   { g: 'Administravimas', items: [['users.manage', 'Valdyti vartotojus'], ['roles.manage', 'Valdyti roles ir leidimus']] },
@@ -143,9 +143,9 @@ const Auth = (() => {
         <label>Rolė<select name="roleId">${admin.roles.map((r) => `<option value="${r.id}" ${edit && u.roleId === r.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select></label>
         <label>${edit ? 'Naujas slaptažodis (palikite tuščią, jei nekeičiate)' : 'Slaptažodis (bent 8 simboliai)'}<input name="password" type="password" autocomplete="new-password" ${edit ? '' : 'required minlength="8"'}></label>
         <label class="check"><input type="checkbox" name="active" ${!edit || u.active ? 'checked' : ''}> Paskyra aktyvi</label>
-        ${me.classIds === null ? `<fieldset class="classpick"><legend>Priskirtos klasės</legend>
-          <small class="muted">Taikoma, jei vartotojo rolė neturi leidimo „Matyti visas klases“.</small>
-          ${admin.classes.length ? admin.classes.map((c) => `<label class="check"><input type="checkbox" name="cls" value="${c.id}" ${edit && (u.classIds || []).includes(c.id) ? 'checked' : ''}> ${esc(c.name)}</label>`).join('') : '<small class="muted">Klasių dar nėra.</small>'}
+        ${me.classIds === null ? `<fieldset class="classpick"><legend>Priskirti komitetai</legend>
+          <small class="muted">Taikoma, jei vartotojo rolė neturi leidimo „Matyti visus komitetus“.</small>
+          ${admin.classes.length ? admin.classes.map((c) => `<label class="check"><input type="checkbox" name="cls" value="${c.id}" ${edit && (u.classIds || []).includes(c.id) ? 'checked' : ''}> ${esc(c.name)}</label>`).join('') : '<small class="muted">Komitetų dar nėra.</small>'}
         </fieldset>` : ''}
         <div class="form-err" role="alert"></div>
         <div class="dlg-actions"><button type="button" class="btn" data-act="close-auth">Atšaukti</button><button type="submit" class="btn primary">Išsaugoti</button></div>
