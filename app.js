@@ -18,6 +18,7 @@ const ICON = {
   upload: svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/>'),
   plus: svg('<path d="M12 5v14M5 12h14"/>'),
   shield: svg('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>'),
+  book: svg('<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>'),
   moon: svg('<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>'),
   sun: svg('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
 };
@@ -211,8 +212,8 @@ function parseImport(text) {
 const keyOf = (s) => (s.first + '|' + s.last).toLowerCase().trim();
 
 /* ---------- rendering ---------- */
-const NAV = [['dashboard', 'Apžvalga', ICON.dash], ['attendance', 'Lankomumas', ICON.check], ['students', 'Mokiniai', ICON.users], ['reports', 'Ataskaitos', ICON.chart], ['data', 'Duomenys', ICON.db], ['users', 'Vartotojai', ICON.users], ['roles', 'Rolės', ICON.shield]];
-const VIEW_PERM = { dashboard: 'dashboard.view', attendance: 'attendance.view', students: 'students.view', reports: 'reports.view', data: 'data.view', users: 'users.manage', roles: 'roles.manage' };
+const NAV = [['dashboard', 'Apžvalga', ICON.dash], ['attendance', 'Lankomumas', ICON.check], ['students', 'Mokiniai', ICON.users], ['classes', 'Klasės', ICON.book], ['reports', 'Ataskaitos', ICON.chart], ['data', 'Duomenys', ICON.db], ['users', 'Vartotojai', ICON.users], ['roles', 'Rolės', ICON.shield]];
+const VIEW_PERM = { dashboard: 'dashboard.view', attendance: 'attendance.view', students: 'students.view', classes: 'classes.manage', reports: 'reports.view', data: 'data.view', users: 'users.manage', roles: 'roles.manage' };
 const ACT_PERM = {
   'new-class': 'classes.manage', 'rename-class': 'classes.manage', 'delete-class': 'classes.manage',
   mark: 'attendance.mark', 'all-present': 'attendance.mark', 'clear-day': 'attendance.mark',
@@ -220,6 +221,7 @@ const ACT_PERM = {
   'open-import': 'students.import', 'do-import': 'students.import', template: 'students.import',
   'export-report': 'reports.export', 'export-all-csv': 'data.backup', 'export-json': 'data.backup',
   'restore-label': 'data.restore', wipe: 'data.wipe',
+  'rename-class-id': 'classes.manage', 'delete-class-id': 'classes.manage', 'open-promote': 'classes.manage', 'do-promote': 'classes.manage',
 };
 function applyPerms() {
   document.querySelectorAll('[data-act]').forEach((el) => {
@@ -264,13 +266,13 @@ function render() {
 function renderInner() {
   const y = window.scrollY;
   renderSide();
-  if (!state.classes.length && !['data', 'users', 'roles'].includes(view)) {
+  if (!state.classes.length && !['data', 'users', 'roles', 'classes'].includes(view)) {
     app.innerHTML = `<div class="card empty"><div class="big">${svg('<path d="M20 6 9 17l-5-5"/>', 30)}</div><h2>Sveiki atvykę į Lankomumo žurnalą</h2>
       <p>${Auth.can('classes.manage') ? 'Sukurkite pirmą klasę, tada pridėkite mokinius po vieną arba importuokite visą sąrašą per kelias sekundes.' : 'Jums dar nepriskirta nė viena klasė. Kreipkitės į administratorių.'}</p>
       <button class="btn primary" data-act="new-class">${ICON.plus} Sukurti klasę</button></div>`;
     return;
   }
-  ({ dashboard: renderDashboard, students: renderStudents, attendance: renderAttendance, reports: renderReports, data: renderData, users: Auth.renderUsers, roles: Auth.renderRoles })[view]();
+  ({ dashboard: renderDashboard, students: renderStudents, attendance: renderAttendance, reports: renderReports, data: renderData, classes: renderClasses, users: Auth.renderUsers, roles: Auth.renderRoles })[view]();
   window.scrollTo(0, y);
 }
 
@@ -404,6 +406,56 @@ function renderData() {
         <span class="spacer"></span>
         <button class="btn danger" data-act="wipe">Ištrinti visus duomenis</button>
       </div></div>`;
+}
+
+/* ---------- klasės: valdymas ir perkėlimas į kitus metus ---------- */
+const byClassName = (a, b) => a.name.localeCompare(b.name, 'lt', { numeric: true });
+/* 1A -> 2A, 9B -> 10B. Nuo 12 klasės ir pavadinimai be skaičiaus nekeičiami. */
+function nextClassName(name) {
+  const m = /^(\D*)(\d+)(.*)$/.exec(String(name).trim());
+  if (!m) return null;
+  const n = parseInt(m[2], 10);
+  return n >= 12 ? null : m[1] + (n + 1) + m[3];
+}
+function renderClasses() {
+  const list = state.classes.slice().sort(byClassName);
+  const rows = list.map((c) => {
+    const n = state.students.filter((s) => s.classId === c.id).length;
+    return `<tr><td><b>${esc(c.name)}</b></td><td class="num">${n}</td><td class="row-actions"><button class="btn small" data-act="rename-class-id" data-cid="${c.id}">Pervadinti</button> <button class="btn small danger" data-act="delete-class-id" data-cid="${c.id}">Ištrinti</button></td></tr>`;
+  }).join('');
+  app.innerHTML = head('Klasės', `Iš viso klasių: ${list.length}`,
+    `<button class="btn" data-act="open-promote">${ICON.upload} Perkelti į kitus metus</button><button class="btn primary" data-act="new-class">${ICON.plus} Nauja klasė</button>`) +
+    `<div class="card">${list.length ? `<div class="table-wrap"><table><thead><tr><th>Klasė</th><th class="num">Mokinių</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+      : '<p class="muted">Klasių dar nėra. Spauskite „Nauja klasė“.</p>'}</div>`;
+}
+function openPromote() {
+  const rows = state.classes.slice().sort(byClassName).map((c) => {
+    const nx = nextClassName(c.name);
+    return `<tr data-cid="${c.id}"><td><input type="checkbox" class="pr-on" aria-label="Perkelti ${esc(c.name)}" ${nx ? 'checked' : ''}></td><td><b>${esc(c.name)}</b></td><td class="muted">&rarr;</td><td><input class="pr-name" value="${esc(nx || c.name)}"></td></tr>`;
+  }).join('');
+  importDlg.innerHTML = `<div class="dlg">
+    <div class="dlg-head"><h3>Perkelti klases į kitus metus</h3><button type="button" class="icon-btn" data-act="close-import" aria-label="Uždaryti">&times;</button></div>
+    <p class="muted" style="margin-top:0">Mokiniai lieka savo klasėse, pasikeičia tik klasės pavadinimas (pvz. 1A &rarr; 2A). Pakoreguokite pavadinimus ir atžymėkite tas klases, kurių perkelti nereikia. Klasės be skaičiaus pavadinime ir nuo 12 klasės nekeičiamos – jei reikia, pavadinimą įrašykite patys.</p>
+    <table class="promote"><thead><tr><th></th><th>Dabar</th><th></th><th>Bus</th></tr></thead><tbody>${rows}</tbody></table>
+    <label class="check"><input type="checkbox" id="promoteClear"> Išvalyti perkeliamų klasių senus lankomumo įrašus (mokiniai lieka)</label>
+    <p class="muted" style="font-size:.8rem;margin:0">Prieš perkeliant verta atsisiųsti atsarginę kopiją skiltyje „Duomenys“.</p>
+    <div class="dlg-actions"><button type="button" class="btn" data-act="close-import">Atšaukti</button><button type="button" class="btn primary" data-act="do-promote">Perkelti</button></div></div>`;
+  importDlg.showModal();
+}
+function doPromote() {
+  const names = new Map();
+  importDlg.querySelectorAll('tr[data-cid]').forEach((tr) => {
+    const c = state.classes.find((x) => x.id === tr.dataset.cid);
+    const nm = tr.querySelector('.pr-name').value.trim();
+    if (c && tr.querySelector('.pr-on').checked && nm && nm !== c.name) names.set(c.id, nm);
+  });
+  if (!names.size) { toast('Nėra ką perkelti'); return; }
+  const final = state.classes.map((c) => (names.get(c.id) || c.name).toLowerCase());
+  if (new Set(final).size !== final.length) { toast('Klasių pavadinimai kartojasi – pakeiskite'); return; }
+  const clear = importDlg.querySelector('#promoteClear').checked;
+  if (clear && !confirm('Tikrai išvalyti perkeliamų klasių lankomumo įrašus? Mokiniai liks.')) return;
+  state.classes.forEach((c) => { if (names.has(c.id)) { c.name = names.get(c.id); if (clear) delete state.records[c.id]; } });
+  save(); importDlg.close(); render(); toast(`Perkelta klasių: ${names.size}`);
 }
 
 /* ---------- student dialog ---------- */
@@ -562,6 +614,22 @@ document.addEventListener('click', (e) => {
     case 'edit-student': openStudentDialog(state.students.find((s) => s.id === el.dataset.sid)); break;
     case 'close-dialog': dialog.close(); break;
     case 'open-import': openImport(); break;
+    case 'open-promote': openPromote(); break;
+    case 'do-promote': doPromote(); break;
+    case 'rename-class-id': {
+      const c = state.classes.find((x) => x.id === el.dataset.cid);
+      const name = c ? (prompt('Naujas pavadinimas?', c.name) || '').trim() : '';
+      if (name) { c.name = name; save(); render(); } break;
+    }
+    case 'delete-class-id': {
+      const c = state.classes.find((x) => x.id === el.dataset.cid);
+      if (!c || !confirm(`Ištrinti „${c.name}“ su visais mokiniais ir lankomumo įrašais?`)) break;
+      state.classes = state.classes.filter((x) => x.id !== c.id);
+      state.students = state.students.filter((s) => s.classId !== c.id);
+      delete state.records[c.id];
+      if (state.currentClassId === c.id) state.currentClassId = state.classes[0] ? state.classes[0].id : null;
+      save(); render(); break;
+    }
     case 'close-import': importDlg.close(); break;
     case 'do-import': doImport(); break;
     case 'template': download('students-template.csv', 'Vardas,Pavardė,El. paštas,Tėvų el. paštas\nAda,Lovelace,ada@example.com,tevai@example.com\nAlan,Turing,,\n'); break;

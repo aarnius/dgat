@@ -28,6 +28,19 @@ Optional: in **Settings > Functions** choose a region close to your Neon databas
 - **Old browser data:** if the browser still holds data from the old no-server version, the superadmin is asked once after login whether to upload it.
 - **Users and roles:** *Vartotojai* tab for users, *Rolės* tab for the permission matrix. Superadmin always has every permission. Add your own with **Naujas leidimas** and check it in code with `Auth.can('custom.your.key')`; for server-side checks use `can(user, 'custom.your.key')` from `lib/server.js`.
 
+## Phone app (PWA)
+
+The site can be installed like an app: `manifest.json`, `sw.js` and the `icon-*.png` files make it open full screen with its own icon.
+
+- **Android (Chrome):** open the site, menu ⋮ → *Install app* (or *Add to Home screen*).
+- **iPhone/iPad (Safari):** Share button → *Add to Home Screen*.
+
+It needs an internet connection for the data (everything is saved on the server). Without a connection the app opens but shows a connection error, and unsaved changes are retried every 5 seconds while the app stays open.
+
+## Classes tab and new school year
+
+The **Klasės** tab (permission `classes.manage`) lists all classes with student counts. **Nauja klasė** adds one, and the pencil/delete buttons rename or remove one. **Perkelti į kitus metus** renames many classes at once (1A → 2A, 9B → 10B). Students stay in their class; only the name changes. Names can be edited before confirming, and you can optionally clear last year's attendance records.
+
 ## Which classes a user can see
 
 - Permission **Matyti visas klases** (`classes.all`) on a role: everyone in that role sees every class. Existing roles keep it after the upgrade, so nothing disappears.
