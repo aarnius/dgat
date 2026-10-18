@@ -1,5 +1,5 @@
 /* Attendance Tracker - single-page app, data stored in this browser (localStorage). */
-const APP_VERSION = '10 · Įrankiai, paieškos, vidiniai langai'; // rodoma skiltyje „Duomenys“ ir prisijungimo lange
+const APP_VERSION = '12 · Kalendorius apžvalgoje, redaguojami sąrašai'; // rodoma skiltyje „Duomenys“ ir prisijungimo lange
 const KEY = 'attendance-tracker-v1';
 const THEME_KEY = 'attendance-theme';
 const STATUS = {
@@ -230,7 +230,7 @@ function detectDelim(line) {
   return ',';
 }
 function parseImport(text) {
-  text = String(text || '').replace(/^﻿/, '');
+  text = String(text || '').replace(/^\uFEFF/, '');
   const firstLine = text.split(/\r?\n/).find((l) => l.trim()) || '';
   if (!firstLine) return [];
   const rows = parseCSV(text, detectDelim(firstLine));
@@ -279,6 +279,7 @@ const ACT_PERM = {
   'restore-label': 'data.restore', wipe: 'data.wipe',
   'rename-class-id': 'classes.manage', 'delete-class-id': 'classes.manage', 'open-promote': 'students.edit', 'do-promote': 'students.edit', 'open-bulk': 'students.edit', 'do-bulk': 'students.edit',
   'tool-gsave': 'tools.save', 'tool-gdel': 'tools.save', 'tool-merge': 'students.delete',
+  'tool-tpl-new': 'tools.save', 'tool-tpl-update': 'tools.save', 'tool-tpl-rename': 'tools.save', 'tool-tpl-del': 'tools.save',
   'backup-create': 'data.backup', 'backup-download': 'data.backup', 'backup-restore': 'data.restore', 'log-undo': 'logs.undo', 'log-clear': 'logs.clear', 'log-clear-do': 'logs.clear',
 };
 function applyPerms() {
@@ -391,6 +392,7 @@ function renderDashboard() {
       <div class="stat" style="--c:var(--a)"><div class="k">Praleidimai šį mėnesį</div><div class="v">${abs}</div><div class="h">visame komitete</div></div>
       <div class="stat" style="--c:var(--l)"><div class="k">Reikia dėmesio</div><div class="v">${risk.length}</div><div class="h">lankomumas žemiau 80%</div></div>
     </div>
+    ${Tools.calendar ? Tools.calendar() : ''}
     <div class="two-col">
       <div class="card"><h2>Paskutinės 14 dienų</h2><p class="sub">Dalyvavusių ar pavėlavusių pažymėtų mokinių dalis (%).</p>
         ${anyData ? `<div class="bars">${bars}</div>` : '<p class="muted">Lankomumas dar nepažymėtas. Pažymėkite lankomumą, kad pamatytumėte tendenciją.</p>'}</div>
