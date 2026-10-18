@@ -769,7 +769,7 @@ function openCard(id) {
     <div class="dlg-head"><span></span><button type="button" class="icon-btn" data-act="close-card" aria-label="Uždaryti">&times;</button></div>
     <div class="card-head">${avatar(s)}<div><h3>${esc(displayName(s))}</h3><span class="muted">Mokinio kortelė${s.grade ? ' · ' + esc(s.grade) + ' klasė' : ''} · ${prettyDate(today())}</span></div><span class="spacer"></span>${rateBadge(tot.rate)}</div>
     <div class="info-grid">
-      <div><small>El. paštas</small>${esc(s.email || '–')}</div><div><small>Tėvų / globėjų el. paštas</small>${esc(s.parentEmail || '–')}</div>
+      <div><small>El. paštas</small>${esc(s.email || '–')}</div><div><small>Klasė</small>${esc(s.grade || '–')}</div>
       <div><small>Komitetai</small>${esc(coms.map((c) => c.name).join(', ') || '–')}</div><div><small>Pastabos</small>${esc(s.notes || '–')}</div>
     </div>
     <h4 class="card-sec">Lankomumas</h4>

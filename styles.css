@@ -387,8 +387,12 @@ th.selcol, td.selcol { width: 34px; padding-right: 0; }
   .pills { margin: 4px 0; }
   body.print-card .shell { display: none !important; }
   body.print-card dialog:not(#cardDialog) { display: none !important; }
-  body.print-card #cardDialog[open] { display: block; position: static; width: 100%; max-height: none; overflow: visible; border: 0; box-shadow: none; padding: 0; }
-  body.print-card #cardDialog .dlg { padding: 0; }
+  body.print-card #cardDialog[open] { display: block; position: static; inset: auto; margin: 0; width: 100%; height: auto; max-height: none; overflow: visible; border: 0; border-radius: 0; box-shadow: none; padding: 0; background: #fff !important; color: #000; }
+  body.print-card #cardDialog::backdrop, dialog::backdrop { background: none !important; backdrop-filter: none !important; display: none !important; }
+  body.print-card #cardDialog .dlg-head { display: none; }
+  body.print-card #cardDialog .rate { background: none !important; color: #000 !important; border: 1px solid #999; }
+  body.print-card #cardDialog .avatar { background: #ddd !important; color: #000 !important; }
+  body.print-card #cardDialog .dlg { padding: 4mm; }
   body.print-card #cardDialog .dlg-actions { display: none; }
   body:not(.print-card) dialog { display: none !important; }
 }
