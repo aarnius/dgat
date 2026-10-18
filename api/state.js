@@ -1,5 +1,9 @@
 import { db, handler, HttpError, getUser, can, canAny, canView, requireUser } from '../lib/server.js';
 
+/* Užtikrina stulpelį „grade“ (mokinio klasė) net jei lib/server.js dar senas. */
+let gradeReady = null;
+const ensureGrade = (sql) => (gradeReady ??= sql`ALTER TABLE students ADD COLUMN IF NOT EXISTS grade text NOT NULL DEFAULT ''`.catch((e) => { gradeReady = null; throw e; }));
+
 const ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const STATUS = ['', 'P', 'A', 'L', 'E'];
@@ -10,6 +14,7 @@ const needId = (v) => { if (!ID_RE.test(String(v))) throw new HttpError(400, 'Ne
 export default handler(async (req, res, body) => {
   const sql = db();
   const me = requireUser(await getUser(req));
+  await ensureGrade(sql);
 
   if (req.method === 'GET') {
     if (!canView(me)) return { classes: [], students: [], records: [] };
