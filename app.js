@@ -1,5 +1,5 @@
 /* Attendance Tracker - single-page app, data stored in this browser (localStorage). */
-const APP_VERSION = '8 · LOG, Undo, kopijos, kortelės'; // rodoma skiltyje „Duomenys“ ir prisijungimo lange
+const APP_VERSION = '9 · Veiklos'; // rodoma skiltyje „Duomenys“ ir prisijungimo lange
 const KEY = 'attendance-tracker-v1';
 const THEME_KEY = 'attendance-theme';
 const STATUS = {
@@ -23,6 +23,7 @@ const ICON = {
   moon: svg('<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>'),
   log: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
   print: svg('<path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v8H6z"/>'),
+  cal: svg('<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>'),
   up: svg('<path d="M12 19V5"/><path d="M5 12l7-7 7 7"/>'),
   sun: svg('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
 };
@@ -30,6 +31,8 @@ const ICON = {
 let state = { classes: [], students: [], records: {}, currentClassId: null }; // užpildoma iš serverio (Sync.pull)
 let view = 'dashboard';
 let attDate = today();
+let attSession = ''; // '' = automatiškai (pirma dienos veikla), '-' = visa diena, kitaip užsiėmimo id
+let repAct = false; // ataskaitose įskaičiuoti veiklų lankomumą
 let search = '';
 let repFrom = today().slice(0, 8) + '01';
 let repTo = today();
@@ -111,6 +114,11 @@ function printPage(what, info) {
   logClient(what, info);
   setTimeout(() => window.print(), 50);
 }
+/* Kiekvieno spausdinto dokumento apačioje – kas jį sukūrė. */
+window.addEventListener('beforeprint', () => {
+  const f = document.getElementById('printFooter'), u = Auth.user();
+  if (f && u) f.textContent = 'Dokumento sukūrėjas: ' + u.name + ' · ' + new Date().toLocaleString('lt-LT', { dateStyle: 'medium', timeStyle: 'short' });
+});
 window.addEventListener('afterprint', () => document.body.classList.remove('print-page', 'print-card'));
 /* Atkuria visą būseną iš kopijos (failo arba serverio) ir išsaugo serveryje; LOG įraše matysis žyma. */
 function restoreState(s, label) {
@@ -257,10 +265,12 @@ function parseImport(text) {
 const keyOf = (s) => (s.first + '|' + s.last).toLowerCase().trim();
 
 /* ---------- rendering ---------- */
-const NAV = [['dashboard', 'Apžvalga', ICON.dash], ['attendance', 'Lankomumas', ICON.check], ['students', 'Mokiniai', ICON.users], ['allstudents', 'Visi mokiniai', ICON.users], ['classes', 'Komitetai', ICON.book], ['reports', 'Ataskaitos', ICON.chart], ['data', 'Duomenys', ICON.db], ['logs', 'LOG', ICON.log], ['users', 'Vartotojai', ICON.users], ['roles', 'Rolės', ICON.shield]];
-const VIEW_PERM = { dashboard: 'dashboard.view', attendance: 'attendance.view', students: 'students.view', allstudents: 'students.view', classes: 'classes.manage', reports: 'reports.view', data: 'data.view', logs: 'logs.view', users: 'users.manage', roles: 'roles.manage' };
+const NAV = [['dashboard', 'Apžvalga', ICON.dash], ['attendance', 'Lankomumas', ICON.check], ['activities', 'Veiklos', ICON.cal], ['students', 'Mokiniai', ICON.users], ['allstudents', 'Visi mokiniai', ICON.users], ['classes', 'Komitetai', ICON.book], ['reports', 'Ataskaitos', ICON.chart], ['data', 'Duomenys', ICON.db], ['logs', 'LOG', ICON.log], ['users', 'Vartotojai', ICON.users], ['roles', 'Rolės', ICON.shield]];
+const VIEW_PERM = { dashboard: 'dashboard.view', attendance: 'attendance.view', activities: 'activities.view', students: 'students.view', allstudents: 'students.view', classes: 'classes.manage', reports: 'reports.view', data: 'data.view', logs: 'logs.view', users: 'users.manage', roles: 'roles.manage' };
 const ACT_PERM = {
   'new-class': 'classes.manage', 'rename-class': 'classes.manage', 'delete-class': 'classes.manage',
+  'act-new': 'activities.create', 'act-new-here': 'activities.create', 'act-edit': 'activities.edit', 'act-del': 'activities.delete', 'sess-new': 'activities.edit', 'sess-edit': 'activities.edit', 'sess-del': 'activities.edit',
+  'act-report': 'activities.report', 'act-export': 'activities.report', 'act-print': 'activities.report', smark: 'activities.mark', 'sall-present': 'activities.mark', sclear: 'activities.mark',
   mark: 'attendance.mark', 'all-present': 'attendance.mark', 'clear-day': 'attendance.mark',
   'add-student': 'students.edit', 'edit-student': 'students.edit', 'delete-student': 'students.delete',
   'open-import': 'students.import', 'do-import': 'students.import', template: 'students.import',
@@ -273,9 +283,10 @@ function applyPerms() {
   document.querySelectorAll('[data-act]').forEach((el) => {
     const p = ACT_PERM[el.dataset.act];
     if (!p || Auth.can(p)) return;
-    if (el.dataset.act === 'mark') el.disabled = true; else el.style.display = 'none';
+    if (el.dataset.act === 'mark' || el.dataset.act === 'smark') el.disabled = true; else el.style.display = 'none';
   });
   if (!Auth.can('attendance.mark')) document.querySelectorAll('[data-note]').forEach((el) => { el.disabled = true; });
+  if (!Auth.can('activities.mark')) document.querySelectorAll('[data-snote]').forEach((el) => { el.disabled = true; });
 }
 
 function renderSide() {
@@ -318,7 +329,7 @@ function renderInner() {
       <button class="btn primary" data-act="new-class">${ICON.plus} Sukurti komitetą</button></div>`;
     return;
   }
-  ({ dashboard: renderDashboard, students: renderStudents, allstudents: renderAllStudents, attendance: renderAttendance, reports: renderReports, data: renderData, logs: Logs.render, classes: renderClasses, users: Auth.renderUsers, roles: Auth.renderRoles })[view]();
+  ({ dashboard: renderDashboard, students: renderStudents, allstudents: renderAllStudents, attendance: renderAttendance, activities: Acts.render, reports: renderReports, data: renderData, logs: Logs.render, classes: renderClasses, users: Auth.renderUsers, roles: Auth.renderRoles })[view]();
   window.scrollTo(0, y);
 }
 
@@ -370,30 +381,48 @@ function renderDashboard() {
 
 function renderAttendance() {
   const cid = state.currentClassId;
-  const list = classStudents();
-  const c = countDay(cid, attDate, list);
+  /* Žymėjimas vyksta pagal veiklos užsiėmimą; „Visa diena“ – senasis būdas (leidžiamas, jei tą dieną yra veikla arba yra leidimas „attendance.free“). */
+  const sess = Acts.sessionsOn(cid, attDate);
+  let ssid = attSession;
+  if (ssid !== '-' && !sess.some((x) => x.id === ssid)) ssid = sess.length ? sess[0].id : '-';
+  const cur = ssid === '-' ? null : sess.find((x) => x.id === ssid);
+  const dayOk = Auth.can('attendance.free') || sess.length > 0;
+  const canMark = cur ? Auth.can('activities.mark') : Auth.can('attendance.mark') && dayOk;
+  const list = cur ? Acts.participants(cur.act) : classStudents();
+  const getR = (sid) => (cur ? Acts.get(cur.id, sid) : getRec(cid, attDate, sid));
+  const c = { P: 0, A: 0, L: 0, E: 0, none: 0 };
+  list.forEach((s) => { const r = getR(s.id); if (r.s) c[r.s]++; else c.none++; });
+  const ssAttr = cur ? ` data-ssid="${cur.id}"` : '';
   const rows = list.map((s) => {
-    const r = getRec(cid, attDate, s.id);
+    const r = getR(s.id);
     const btns = Object.keys(STATUS).map((k) =>
-      `<button class="${STATUS[k].cls} ${r.s === k ? 'on' : ''}" title="${STATUS[k].label}" data-act="mark" data-sid="${s.id}" data-s="${k}"><span class="lg">${STATUS[k].label}</span><span class="sm">${STATUS[k].short}</span></button>`).join('');
+      `<button class="${STATUS[k].cls} ${r.s === k ? 'on' : ''}" title="${STATUS[k].label}" data-act="${cur ? 'smark' : 'mark'}"${ssAttr} data-sid="${s.id}" data-s="${k}" ${canMark ? '' : 'disabled'}><span class="lg">${STATUS[k].label}</span><span class="sm">${STATUS[k].short}</span></button>`).join('');
+    const noteAttr = cur ? `data-snote="${s.id}" data-ssid="${cur.id}"` : `data-note="${s.id}"`;
     return `<tr><td><div class="who">${avatar(s)}<div><b class="name-link" data-act="student-card" data-sid="${s.id}" role="button" tabindex="0">${esc(displayName(s))}</b>${s.grade ? `<small>${esc(s.grade)} kl.</small>` : ''}</div></div></td><td><div class="seg">${btns}</div></td>` +
-      `<td class="hide-sm"><input class="note-input" data-note="${s.id}" placeholder="Pridėti pastabą" value="${esc(r.n)}"></td></tr>`;
+      `<td class="hide-sm"><input class="note-input" ${noteAttr} placeholder="Pridėti pastabą" value="${esc(r.n)}" ${canMark ? '' : 'disabled'}></td></tr>`;
   }).join('');
-  app.innerHTML = head('Lankomumas', prettyDate(attDate),
-    `<button class="btn" data-act="print-page" data-what="print-day">${ICON.print} Spausdinti</button><button class="btn" data-act="clear-day">Išvalyti dieną</button><button class="btn primary" data-act="all-present">${ICON.check} Visi dalyvavo</button>`) +
-    `<div class="card"><div class="print-only print-title"><h2>Lankomumas – ${esc(curClass().name)}</h2><p>${prettyDate(attDate)}</p></div>
+  const tabs = sess.length
+    ? `<div class="sess-tabs no-print">${sess.map((x) => `<button class="btn small ${x.id === ssid ? 'primary' : ''}" data-act="pick-session" data-ssid="${x.id}">${esc(x.act.name)}${x.from ? ' · ' + esc(x.from) : ''}</button>`).join('')}<button class="btn small ${ssid === '-' ? 'primary' : ''}" data-act="pick-session" data-ssid="-">Visa diena</button></div>` : '';
+  const notice = !cur && !dayOk
+    ? `<div class="notice no-print"><span>Šią dieną šiame komitete veiklos nėra, todėl lankomumo žymėti negalima.</span>${Auth.can('activities.create') && Auth.can('activities.view') ? '<button class="btn small primary" data-act="act-new-here">Sukurti veiklą</button>' : '<span class="muted">Kreipkitės į administratorių.</span>'}</div>` : '';
+  const actions = `<button class="btn" data-act="print-page" data-what="print-day">${ICON.print} Spausdinti</button>` +
+    (canMark ? `<button class="btn" data-act="${cur ? 'sclear' : 'clear-day'}"${ssAttr}>Išvalyti ${cur ? 'užsiėmimą' : 'dieną'}</button><button class="btn primary" data-act="${cur ? 'sall-present' : 'all-present'}"${ssAttr}>${ICON.check} Visi dalyvavo</button>` : '');
+  app.innerHTML = head('Lankomumas', prettyDate(attDate), actions) +
+    `<div class="card"><div class="print-only print-title"><h2>Lankomumas – ${esc(curClass().name)}${cur ? ' · ' + esc(cur.act.name) : ''}</h2><p>${prettyDate(attDate)}${cur && cur.from ? ' · ' + esc(Acts.hhmm(cur)) : ''}${cur && cur.act.teacherName ? ' · Atsakingas: ' + esc(cur.act.teacherName) : ''}${cur && cur.act.place ? ' · Vieta: ' + esc(cur.act.place) : ''}</p></div>
       <div class="date-bar">
         <button class="icon-btn" data-act="prev-day" aria-label="Ankstesnė diena">&larr;</button>
         <input type="date" id="attDate" value="${attDate}">
         <button class="icon-btn" data-act="next-day" aria-label="Kita diena">&rarr;</button>
         <button class="btn small" data-act="today">Šiandien</button>
       </div>
+      ${tabs}${cur ? Acts.infoHtml(cur) : ''}${notice}
       <div class="pills">
         <span class="pill p"><i></i>Dalyvavo ${c.P}</span><span class="pill a"><i></i>Nedalyvavo ${c.A}</span>
         <span class="pill l"><i></i>Vėlavo ${c.L}</span><span class="pill e"><i></i>Pateisinta ${c.E}</span><span class="pill n"><i></i>Nepažymėta ${c.none}</span>
       </div>
       ${list.length ? `<div class="table-wrap"><table><thead><tr><th>Mokinys</th><th>Būsena</th><th class="hide-sm">Pastaba</th></tr></thead><tbody>${rows}</tbody></table></div>`
-        : `<div class="empty"><p>Šiame komitete mokinių dar nėra.</p><button class="btn primary" data-act="open-import">${ICON.upload} Importuoti mokinius</button></div>`}
+        : cur ? '<div class="empty"><p>Šioje veikloje dalyvių nėra.</p></div>'
+          : `<div class="empty"><p>Šiame komitete mokinių dar nėra.</p><button class="btn primary" data-act="open-import">${ICON.upload} Importuoti mokinius</button></div>`}
     </div>`;
 }
 
@@ -477,6 +506,14 @@ function renderAllStudents() {
     </div>`;
 }
 
+/* Prideda veiklų žymas prie dienos lankomumo sumos (ataskaitoms su pažymėta parinktimi). */
+function plusAct(t, x) {
+  const r = { P: t.P + x.P, A: t.A + x.A, L: t.L + x.L, E: t.E + x.E };
+  const den = r.P + r.L + r.A;
+  r.rate = den ? Math.round(((r.P + r.L) / den) * 100) : null;
+  r.total = den + r.E;
+  return r;
+}
 function reportData() {
   const inR = (d) => d >= repFrom && d <= repTo;
   const dayMap = new Map();
@@ -485,7 +522,7 @@ function reportData() {
     const grades = gradeList();
     if (!repGrade || (repGrade !== '-' && !grades.includes(repGrade))) repGrade = grades[0] || '-';
     list = state.students.filter((s) => (repGrade === '-' ? !s.grade : s.grade === repGrade)).sort((a, b) => fullName(a).localeCompare(fullName(b), 'lt'));
-    getStats = (s) => statsAll(s, repFrom, repTo);
+    getStats = (s) => (repAct ? plusAct(statsAll(s, repFrom, repTo), Acts.totals(s.id, { from: repFrom, to: repTo })) : statsAll(s, repFrom, repTo));
     list.forEach((s) => (s.classIds || []).forEach((cid) => {
       const recs = state.records[cid] || {};
       for (const d in recs) {
@@ -498,7 +535,7 @@ function reportData() {
   } else {
     const cid = state.currentClassId;
     list = classStudents();
-    getStats = (s) => stats(cid, s.id, repFrom, repTo);
+    getStats = (s) => (repAct ? plusAct(stats(cid, s.id, repFrom, repTo), Acts.totals(s.id, { cid, from: repFrom, to: repTo })) : stats(cid, s.id, repFrom, repTo));
     Object.keys(state.records[cid] || {}).filter(inR).forEach((d) => { const k = countDay(cid, d, list); dayMap.set(d, { P: k.P, A: k.A, L: k.L, E: k.E }); });
     title = 'Komitetas ' + curClass().name;
   }
@@ -524,11 +561,12 @@ function renderReports() {
     <div class="card"><div class="actions">
       <select id="repMode" aria-label="Ataskaitos tipas">${opt('com', 'Pagal komitetą (šoninėje juostoje pasirinktą)', repMode)}${opt('grade', 'Pagal mokinio klasę', repMode)}</select>
       ${grade ? `<select id="repGrade" aria-label="Klasė">${gradeList().map((g) => opt(g, g + ' klasė', repGrade)).join('')}${opt('-', 'Be klasės', repGrade)}</select>` : ''}
-      <label class="muted">Nuo <input type="date" id="repFrom" value="${repFrom}"></label><label class="muted">Iki <input type="date" id="repTo" value="${repTo}"></label></div></div>
+      <label class="muted">Nuo <input type="date" id="repFrom" value="${repFrom}"></label><label class="muted">Iki <input type="date" id="repTo" value="${repTo}"></label>${Auth.can('activities.view') ? `<label class="check" style="margin:0"><input type="checkbox" id="repAct" ${repAct ? 'checked' : ''}> Įskaičiuoti veiklų lankomumą į rodiklį</label>` : ''}</div></div>
     <div class="card"><h2>Pagal mokinį · ${esc(title)}</h2><p class="sub">Rodiklis = (dalyvavo + vėlavo) ÷ (dalyvavo + vėlavo + nedalyvavo). Pateisintos dienos neįskaičiuojamos.${grade ? ' Klasės ataskaitoje sumuojami visi mokinio komitetai.' : ''}</p>
       ${list.length ? `<div class="table-wrap"><table><thead><tr><th>Mokinys</th>${grade ? '<th class="hide-sm">Komitetai</th>' : ''}<th class="num">Dalyvavo</th><th class="num">Nedalyvavo</th><th class="num">Vėlavo</th><th class="num">Pateisinta</th><th class="num">Rodiklis</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="muted">Nėra mokinių.</p>'}</div>
-    <div class="card"><h2>Pagal dieną</h2><p class="sub">&nbsp;</p>
-      ${dayRows ? `<div class="table-wrap"><table><thead><tr><th>Data</th><th class="num">Dalyvavo</th><th class="num">Nedalyvavo</th><th class="num">Vėlavo</th><th class="num">Pateisinta</th></tr></thead><tbody>${dayRows}</tbody></table></div>` : '<p class="muted">Šiuo laikotarpiu lankomumo įrašų nėra.</p>'}</div>`;
+    <div class="card"><h2>Pagal dieną</h2><p class="sub">Tik dienos lankomumas (veiklų užsiėmimai – atskiroje kortelėje žemiau).</p>
+      ${dayRows ? `<div class="table-wrap"><table><thead><tr><th>Data</th><th class="num">Dalyvavo</th><th class="num">Nedalyvavo</th><th class="num">Vėlavo</th><th class="num">Pateisinta</th></tr></thead><tbody>${dayRows}</tbody></table></div>` : '<p class="muted">Šiuo laikotarpiu lankomumo įrašų nėra.</p>'}</div>
+    ${!grade && Auth.can('activities.view') ? Acts.reportCard(state.currentClassId, repFrom, repTo) : ''}`;
 }
 function gradeReportCSV() {
   const { list, getStats } = reportData();
@@ -775,6 +813,7 @@ function openCard(id) {
     <h4 class="card-sec">Lankomumas</h4>
     ${coms.length ? `<div class="table-wrap"><table><thead><tr><th>Komitetas</th><th class="num">Dalyvavo</th><th class="num">Nedalyvavo</th><th class="num">Vėlavo</th><th class="num">Pateisinta</th><th class="num">Rodiklis</th></tr></thead><tbody>${comRows}
       ${coms.length > 1 ? `<tr><td><b>Iš viso</b></td><td class="num">${tot.P}</td><td class="num">${tot.A}</td><td class="num">${tot.L}</td><td class="num">${tot.E}</td><td class="num">${rateBadge(tot.rate)}</td></tr>` : ''}</tbody></table></div>` : '<p class="muted">Komitetų nėra.</p>'}
+    ${Acts.cardSection(s)}
     <h4 class="card-sec">Praleidimai, vėlavimai ir pastabos</h4>
     ${evRows ? `<div class="table-wrap"><table><thead><tr><th>Data</th><th>Komitetas</th><th>Būsena</th><th>Pastaba</th></tr></thead><tbody>${evRows}</tbody></table></div>${ev.length > 40 ? `<p class="muted" style="font-size:.8rem">Rodoma 40 naujausių iš ${ev.length}.</p>` : ''}` : '<p class="muted">Įrašų nėra.</p>'}
     <div class="dlg-actions"><button type="button" class="btn" data-act="edit-student" data-sid="${s.id}">Redaguoti</button><button type="button" class="btn primary" data-act="print-card" data-sid="${s.id}">${ICON.print} Spausdinti</button></div></div>`;
@@ -806,7 +845,7 @@ document.addEventListener('click', (e) => {
   const cid = state.currentClassId;
   if (ACT_PERM[act] && !Auth.can(ACT_PERM[act])) { toast('Neturite teisės atlikti šio veiksmo'); return; }
   switch (act) {
-    case 'tab': view = el.dataset.view; sel.clear(); Logs.reset(); Backups.reset(); Auth.invalidate(); render(); window.scrollTo(0, 0); break;
+    case 'tab': view = el.dataset.view; sel.clear(); Logs.reset(); Backups.reset(); Auth.invalidate(); Acts.closeReport(); render(); window.scrollTo(0, 0); Acts.refresh().then((ch) => { if (ch) render(); }); break;
     case 'go-attendance': view = 'attendance'; render(); break;
     case 'theme':
       try { localStorage.setItem(THEME_KEY, currentTheme() === 'dark' ? 'light' : 'dark'); } catch (err) { /* ignore */ }
@@ -834,14 +873,14 @@ document.addEventListener('click', (e) => {
     }
     case 'all-present': classStudents().forEach((s) => { if (!getRec(cid, attDate, s.id).s) setRec(cid, attDate, s.id, { s: 'P' }); }); render(); break;
     case 'clear-day': if (confirm('Išvalyti visas šios dienos žymas?')) { delete (state.records[cid] || {})[attDate]; save(); render(); } break;
-    case 'prev-day': attDate = shiftDate(attDate, -1); render(); break;
-    case 'next-day': attDate = shiftDate(attDate, 1); render(); break;
-    case 'today': attDate = today(); render(); break;
+    case 'prev-day': attDate = shiftDate(attDate, -1); attSession = ''; render(); break;
+    case 'next-day': attDate = shiftDate(attDate, 1); attSession = ''; render(); break;
+    case 'today': attDate = today(); attSession = ''; render(); break;
     case 'add-student': openStudentDialog(null); break;
     case 'student-card': openCard(el.dataset.sid); break;
     case 'close-card': cardDlg.close(); break;
     case 'print-card': { const st = state.students.find((x) => x.id === el.dataset.sid); document.body.classList.add('print-card'); logClient('print-card', st ? displayName(st) : ''); setTimeout(() => window.print(), 50); break; }
-    case 'print-page': printPage(el.dataset.what, (act === 'print-page' && el.dataset.what === 'print-day' ? curClass().name + ' ' + attDate : reportData().title + ' ' + repFrom + '–' + repTo)); break;
+    case 'print-page': printPage(el.dataset.what, el.dataset.what === 'print-day' ? curClass().name + ' ' + attDate + (attSession && attSession !== '-' ? ' · ' + Acts.sessionLabel(attSession) : '') : reportData().title + ' ' + repFrom + '–' + repTo); break;
     case 'open-bulk': openBulk(); break;
     case 'do-bulk': doBulk(); break;
     case 'sel-clear': sel.clear(); render(); break;
@@ -886,13 +925,13 @@ document.addEventListener('click', (e) => {
       state.classes.forEach((c) => { out.push('Komitetas: ' + c.name, allAttendanceCSV(c.id), ''); });
       logClient('export-csv'); download('attendance-all.csv', out.join('\n')); break;
     }
-    case 'export-json': logClient('export-json'); download(`attendance-backup-${today()}.json`, JSON.stringify(state, null, 2), 'application/json'); break;
+    case 'export-json': logClient('export-json'); download(`attendance-backup-${today()}.json`, JSON.stringify(Object.assign({}, state, { activities: Acts.dump() }), null, 2), 'application/json'); break;
     case 'wipe':
       if (confirm('Ištrinti VISUS komitetus, mokinius ir lankomumą iš serverio (visiems vartotojams)?') && confirm('Šio veiksmo atšaukti negalima. Tikrai viską ištrinti?')) {
         state = { classes: [], students: [], records: {}, currentClassId: null }; Sync.tag('Ištrinti visi duomenys'); save(); render();
       }
       break;
-    default: if (!Logs.act(act, el) && !Backups.act(act, el)) Auth.act(act, el);
+    default: if (!Acts.act(act, el) && !Logs.act(act, el) && !Backups.act(act, el)) Auth.act(act, el);
   }
 });
 
@@ -902,10 +941,11 @@ document.addEventListener('change', (e) => {
   else if (t.dataset && t.dataset.selall !== undefined) { visIds.forEach((id) => { if (t.checked) sel.add(id); else sel.delete(id); }); render(); }
   else if (t.id === 'repMode') { repMode = t.value; render(); }
   else if (t.id === 'repGrade') { repGrade = t.value; render(); }
+  else if (t.id === 'repAct') { repAct = t.checked; render(); }
   else if (t.id === 'allCom') { allCom = t.value; render(); }
   else if (t.id === 'allGrade') { allGrade = t.value; render(); }
   else if (t.id === 'classSelect') { state.currentClassId = t.value; save(); render(); }
-  else if (t.id === 'attDate') { if (t.value) { attDate = t.value; render(); } }
+  else if (t.id === 'attDate') { if (t.value) { attDate = t.value; attSession = ''; render(); } }
   else if (t.id === 'repFrom') { repFrom = t.value || repFrom; render(); }
   else if (t.id === 'repTo') { repTo = t.value || repTo; render(); }
   else if (t.id === 'importFile') loadImportFile(t.files && t.files[0]);

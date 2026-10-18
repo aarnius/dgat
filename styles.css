@@ -396,3 +396,25 @@ th.selcol, td.selcol { width: 34px; padding-right: 0; }
   body.print-card #cardDialog .dlg-actions { display: none; }
   body:not(.print-card) dialog { display: none !important; }
 }
+
+/* ---------- veiklos ---------- */
+.act-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 8px; }
+.act-head h2 { margin: 0 0 2px; }
+.act-head .actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.act-desc { margin: 6px 0 10px; white-space: pre-wrap; }
+.act-meta { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
+.act-info { margin: 8px 0 0; color: var(--muted); font-size: 0.88rem; white-space: pre-wrap; }
+.act-info b { color: var(--text); font-weight: 600; }
+.chip { display: inline-flex; align-items: center; padding: 4px 11px; border-radius: 999px; font-size: 0.8rem; font-weight: 600; background: var(--surface-2); border: 1px solid var(--line); color: var(--muted); }
+.sess-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0 2px; }
+.notice { margin: 12px 0; padding: 12px 14px; border-radius: 12px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between;
+  background: color-mix(in srgb, var(--l) 14%, transparent); border: 1px solid color-mix(in srgb, var(--l) 40%, transparent); }
+.kind.k-activities { background: color-mix(in srgb, var(--p) 16%, transparent); color: var(--p); }
+.print-footer { display: none; }
+
+/* spausdinimo apačia: „Dokumento sukūrėjas“ kiekviename puslapyje */
+@media print {
+  @page { margin: 14mm 14mm 20mm; }
+  .print-footer { display: block; position: fixed; left: 0; right: 0; bottom: -10mm; font-size: 10.5px; color: #444; border-top: 1px solid #999; padding-top: 3px; }
+  .sess-tabs, .notice { display: none !important; }
+}

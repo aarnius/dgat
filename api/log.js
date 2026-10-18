@@ -9,6 +9,8 @@ const EVENTS = {
   'print-report': 'Spausdinama ataskaita',
   'print-card': 'Spausdinama mokinio kortelė',
   'print-day': 'Spausdinamas dienos lankomumas',
+  'print-activity': 'Spausdinama veiklos ataskaita',
+  'export-activity': 'Eksportuota veiklos ataskaita (CSV)',
 };
 
 export default handler(async (req, res, body) => {

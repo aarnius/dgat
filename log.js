@@ -1,6 +1,6 @@
 /* LOG (pakeitimų istorija) ir atsarginės kopijos serveryje. Naudoja app.js / auth.js funkcijas (api, esc, head, ICON, render...). */
 const Logs = (() => {
-  const KINDS = [['', 'Visi įvykiai'], ['attendance', 'Lankomumas'], ['students', 'Mokiniai'], ['committees', 'Komitetai'], ['data', 'Duomenys'], ['undo', 'Atšaukimai'],
+  const KINDS = [['', 'Visi įvykiai'], ['attendance', 'Lankomumas'], ['activities', 'Veiklos'], ['students', 'Mokiniai'], ['committees', 'Komitetai'], ['data', 'Duomenys'], ['undo', 'Atšaukimai'],
     ['auth', 'Prisijungimai'], ['admin', 'Administravimas'], ['backup', 'Kopijos'], ['export', 'Eksportas / spausdinimas']];
   const kindName = (k) => { const x = KINDS.find((y) => y[0] === k); return x ? x[1] : k; };
   let f = { kind: '', from: '', to: '', q: '' }, items = [], more = false, st = 'idle', err = '';
@@ -131,7 +131,7 @@ const Backups = (() => {
   async function getFile(id) {
     try {
       const d = await api('/api/backup?id=' + id);
-      const out = { classes: d.classes, students: d.students, records: Sync.nest(d.records), currentClassId: null };
+      const out = { classes: d.classes, students: d.students, records: Sync.nest(d.records), currentClassId: null, activities: d.activities || null };
       download(`attendance-backup-server-${id}.json`, JSON.stringify(out, null, 2), 'application/json');
       api('/api/backup', { action: 'opened', what: 'Atsisiųsta serverio kopija #' + id }).catch(() => {});
     } catch (e) { toast(e.message); }

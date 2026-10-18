@@ -95,7 +95,9 @@ const Sync = (() => {
     if (state.currentClassId && next.classes.some((c) => c.id === state.currentClassId)) cur = state.currentClassId;
     next.currentClassId = next.classes.some((c) => c.id === cur) ? cur : (next.classes[0] ? next.classes[0].id : null);
     state = next; snap = clone(state);
-    return changed;
+    let actCh = false;
+    try { if (typeof Acts !== 'undefined') actCh = await Acts.refresh(); } catch (e) { /* ignore */ }
+    return changed || actCh;
   }
   /* Fone atnaujina duomenis (kiti vartotojai gali būti ką nors pakeitę), bet netrukdo, kol žmogus rašo ar saugoma. */
   async function softPull() {
@@ -131,6 +133,7 @@ const Sync = (() => {
     clearTimeout(timer); clearTimeout(retry);
     dirty = false; tagText = ''; snap = empty(); state = empty(); setStatus('', '');
     if (typeof Logs !== 'undefined') Logs.reset(true);
+    if (typeof Acts !== 'undefined') Acts.reset();
     if (typeof Backups !== 'undefined') Backups.reset(true);
   }
 
@@ -138,5 +141,5 @@ const Sync = (() => {
   document.addEventListener('visibilitychange', () => { if (!document.hidden) softPull(); });
   setInterval(softPull, 20000);
 
-  return { queue, flush, pull, softPull, migrateLegacy, reset, diff, isEmpty, tag, nest };
+  return { queue, flush, pull, softPull, migrateLegacy, reset, diff, isEmpty, tag, nest, setStatus };
 })();
