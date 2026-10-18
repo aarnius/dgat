@@ -513,7 +513,7 @@ table.sheet.fs-l { font-size: 1.05rem; }
   table.sheet.fs-s { font-size: 10px; }
   table.sheet.fs-l { font-size: 14px; }
 }
-/* ---------- vartotojo mygtukas šoninėje juostoje: ilgas vardas nukerpamas su „…“ ---------- */
-.userchip-btn .hide-sm { flex: 1 1 auto; min-width: 0; overflow: hidden; }
-.userchip-btn small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* ---------- vartotojo mygtukas šoninėje juostoje: ilgas vardas keliamas į kitą eilutę ---------- */
+.userchip-btn .hide-sm { flex: 1 1 auto; min-width: 0; }
+.userchip-btn b, .userchip-btn small { display: block; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
 .userchip-btn .chip-edit { flex: none; }

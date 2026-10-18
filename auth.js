@@ -1,7 +1,7 @@
 /* Prisijungimas, vartotojai, rolės ir leidimai (kalbasi su serveriu per /api/*).
    Interfeisas tik slepia mygtukus – tikrasis leidimų tikrinimas vyksta serveryje. */
 const PERMS = [
-  { g: 'Apžvalga', items: [['dashboard.view', 'Matyti apžvalgą']] },
+  { g: 'Apžvalga', items: [['dashboard.view', 'Matyti apžvalgą'], ['calendar.all', 'Matyti bendrą visų komitetų kalendorių apžvalgoje']] },
   { g: 'Lankomumas', items: [['attendance.view', 'Matyti lankomumą'], ['attendance.mark', 'Žymėti lankomumą'], ['attendance.free', 'Žymėti dienos lankomumą be veiklos (kitaip – tik dienomis, kai komitetas turi veiklą)']] },
   { g: 'Veiklos', items: [['activities.view', 'Matyti veiklas'], ['activities.create', 'Kurti veiklas (tik matomiems komitetams)'], ['activities.edit', 'Redaguoti veiklas ir jų užsiėmimus (datas)'], ['activities.delete', 'Ištrinti veiklas'], ['activities.mark', 'Žymėti lankomumą veiklų užsiėmimuose'], ['activities.report', 'Veiklų ataskaitos, eksportas ir spausdinimas']] },
   { g: 'Mokiniai', items: [['students.view', 'Matyti mokinius'], ['students.edit', 'Pridėti ir redaguoti mokinius'], ['students.delete', 'Ištrinti mokinius'], ['students.import', 'Importuoti mokinius']] },
@@ -34,8 +34,8 @@ const Auth = (() => {
   const dlg = document.createElement('dialog');
   dlg.id = 'authDialog';
   document.body.appendChild(dlg);
-  const loading = () => { app.innerHTML = '<p class="muted" style="padding:24px">Kraunama…</p>'; };
 
+  const loading = () => { app.innerHTML = '<p class="muted" style="padding:24px">Kraunama…</p>'; };
   const user = () => me;
   const isSuper = () => !!me && me.roleId === 'superadmin';
   function can(p) {
@@ -267,6 +267,7 @@ const Auth = (() => {
       render();
     }
   });
+
   dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
 
   return { user, can, init, refreshMe, expire, invalidate, renderAuth, renderUsers, renderRoles, userChip, act };
