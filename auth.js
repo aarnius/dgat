@@ -84,7 +84,7 @@ const Auth = (() => {
         ${first ? '<label>Pakartokite slaptažodį<input name="password2" type="password" required minlength="8" autocomplete="new-password"></label>' : '<label class="check"><input type="checkbox" name="remember"> Likti prisijungus šiame įrenginyje</label>'}
         <div class="form-err" role="alert">${esc(loginMsg)}</div>
         <button type="submit" class="btn primary block">${first ? 'Sukurti paskyrą' : 'Prisijungti'}</button>
-      </form></div></div>`;
+      </form><p class="muted" style="font-size:.75rem;text-align:center;margin:14px 0 0">Versija ${typeof APP_VERSION !== 'undefined' ? APP_VERSION : ''}</p></div></div>`;
     loginMsg = '';
     const f = app.querySelector('input'); if (f) f.focus();
   }

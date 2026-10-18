@@ -1,4 +1,5 @@
 /* Attendance Tracker - single-page app, data stored in this browser (localStorage). */
+const APP_VERSION = '5 · Klasės + telefonas'; // rodoma skiltyje „Duomenys“ ir prisijungimo lange
 const KEY = 'attendance-tracker-v1';
 const THEME_KEY = 'attendance-theme';
 const STATUS = {
@@ -405,7 +406,8 @@ function renderData() {
         <label class="btn" data-act="restore-label">Atkurti iš kopijos<input type="file" id="jsonFile" accept=".json,application/json" hidden></label>
         <span class="spacer"></span>
         <button class="btn danger" data-act="wipe">Ištrinti visus duomenis</button>
-      </div></div>`;
+      </div></div>
+    <p class="muted" style="font-size:.8rem">Programos versija: ${APP_VERSION}</p>`;
 }
 
 /* ---------- klasės: valdymas ir perkėlimas į kitus metus ---------- */
