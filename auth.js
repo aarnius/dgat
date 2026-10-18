@@ -8,6 +8,7 @@ const PERMS = [
   { g: 'Komitetai', items: [['classes.all', 'Matyti visus komitetus (kitaip – tik vartotojui priskirtus)'], ['classes.manage', 'Kurti, pervadinti ir ištrinti komitetus']] },
   { g: 'Ataskaitos', items: [['reports.view', 'Matyti ataskaitas'], ['reports.export', 'Eksportuoti ataskaitas (CSV)']] },
   { g: 'Duomenys', items: [['data.view', 'Atidaryti skiltį „Duomenys“'], ['data.backup', 'Atsisiųsti atsarginę kopiją'], ['data.restore', 'Atkurti iš kopijos'], ['data.wipe', 'Ištrinti visus duomenis']] },
+  { g: 'Įrankiai', items: [['tools.view', 'Naudoti įrankius (grupės, traukimas, sąrašai, rizikos sąrašas, dublikatai)'], ['tools.save', 'Išsaugoti ir ištrinti sugrupavimus']] },
   { g: 'LOG (pakeitimų istorija)', items: [['logs.view', 'Matyti LOG'], ['logs.undo', 'Atšaukti pakeitimus (Undo)'], ['logs.clear', 'Valyti LOG']] },
   { g: 'Administravimas', items: [['users.manage', 'Valdyti vartotojus'], ['roles.manage', 'Valdyti roles ir leidimus']] },
 ];
@@ -199,28 +200,25 @@ const Auth = (() => {
       case 'edit-user': { const u = admin && admin.users.find((x) => x.id === uid2); if (u) openUserDialog(u); break; }
       case 'delete-user': {
         const u = admin && admin.users.find((x) => x.id === uid2);
-        if (u && confirm(`Ištrinti vartotoją ${u.name}?`)) adminCall({ action: 'user-delete', id: u.id }, 'Vartotojas ištrintas');
+        if (u) UI.confirm(`Ištrinti vartotoją ${u.name}?`).then((ok) => { if (ok) adminCall({ action: 'user-delete', id: u.id }, 'Vartotojas ištrintas'); });
         break;
       }
       case 'add-role': {
-        const name = (prompt('Naujos rolės pavadinimas?') || '').trim();
-        if (name) adminCall({ action: 'role-add', name }); break;
+        UI.prompt('Nauja rolė', '', { label: 'Rolės pavadinimas', okText: 'Sukurti' }).then((name) => { if (name) adminCall({ action: 'role-add', name }); }); break;
       }
       case 'rename-role': {
         const r = admin && admin.roles.find((x) => x.id === rid);
-        const name = r && (prompt('Naujas rolės pavadinimas?', r.name) || '').trim();
-        if (name) adminCall({ action: 'role-rename', id: r.id, name }); break;
+        if (r) UI.prompt('Pervadinti rolę', r.name, { label: 'Naujas pavadinimas' }).then((name) => { if (name) adminCall({ action: 'role-rename', id: r.id, name }); }); break;
       }
       case 'delete-role': {
         const r = admin && admin.roles.find((x) => x.id === rid);
-        if (r && confirm(`Ištrinti rolę „${r.name}“?`)) adminCall({ action: 'role-delete', id: r.id }); break;
+        if (r) UI.confirm(`Ištrinti rolę „${r.name}“?`).then((ok) => { if (ok) adminCall({ action: 'role-delete', id: r.id }); }); break;
       }
       case 'add-perm': {
-        const label = (prompt('Naujo leidimo pavadinimas? (pvz. Siųsti pranešimus tėvams)') || '').trim();
-        if (label) adminCall({ action: 'perm-add', label }, 'Leidimas pridėtas'); break;
+        UI.prompt('Naujas leidimas', '', { label: 'Leidimo pavadinimas', placeholder: 'pvz. Siųsti pranešimus tėvams', okText: 'Pridėti' }).then((label) => { if (label) adminCall({ action: 'perm-add', label }, 'Leidimas pridėtas'); }); break;
       }
       case 'delete-perm':
-        if (confirm('Pašalinti šį leidimą iš visų rolių?')) adminCall({ action: 'perm-delete', key: el.dataset.key }); break;
+        UI.confirm('Pašalinti šį leidimą iš visų rolių?').then((ok) => { if (ok) adminCall({ action: 'perm-delete', key: el.dataset.key }); }); break;
     }
   }
 

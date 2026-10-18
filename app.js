@@ -1,5 +1,5 @@
 /* Attendance Tracker - single-page app, data stored in this browser (localStorage). */
-const APP_VERSION = '9 · Veiklos'; // rodoma skiltyje „Duomenys“ ir prisijungimo lange
+const APP_VERSION = '10 · Įrankiai, paieškos, vidiniai langai'; // rodoma skiltyje „Duomenys“ ir prisijungimo lange
 const KEY = 'attendance-tracker-v1';
 const THEME_KEY = 'attendance-theme';
 const STATUS = {
@@ -21,6 +21,7 @@ const ICON = {
   shield: svg('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>'),
   book: svg('<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>'),
   moon: svg('<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>'),
+  tools: svg('<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.4 2.4-2.4-.6-.6-2.4z"/>'),
   log: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
   print: svg('<path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v8H6z"/>'),
   cal: svg('<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>'),
@@ -265,8 +266,8 @@ function parseImport(text) {
 const keyOf = (s) => (s.first + '|' + s.last).toLowerCase().trim();
 
 /* ---------- rendering ---------- */
-const NAV = [['dashboard', 'Apžvalga', ICON.dash], ['attendance', 'Lankomumas', ICON.check], ['activities', 'Veiklos', ICON.cal], ['students', 'Mokiniai', ICON.users], ['allstudents', 'Visi mokiniai', ICON.users], ['classes', 'Komitetai', ICON.book], ['reports', 'Ataskaitos', ICON.chart], ['data', 'Duomenys', ICON.db], ['logs', 'LOG', ICON.log], ['users', 'Vartotojai', ICON.users], ['roles', 'Rolės', ICON.shield]];
-const VIEW_PERM = { dashboard: 'dashboard.view', attendance: 'attendance.view', activities: 'activities.view', students: 'students.view', allstudents: 'students.view', classes: 'classes.manage', reports: 'reports.view', data: 'data.view', logs: 'logs.view', users: 'users.manage', roles: 'roles.manage' };
+const NAV = [['dashboard', 'Apžvalga', ICON.dash], ['attendance', 'Lankomumas', ICON.check], ['activities', 'Veiklos', ICON.cal], ['students', 'Mokiniai', ICON.users], ['allstudents', 'Visi mokiniai', ICON.users], ['classes', 'Komitetai', ICON.book], ['tools', 'Įrankiai', ICON.tools], ['reports', 'Ataskaitos', ICON.chart], ['data', 'Duomenys', ICON.db], ['logs', 'LOG', ICON.log], ['users', 'Vartotojai', ICON.users], ['roles', 'Rolės', ICON.shield]];
+const VIEW_PERM = { dashboard: 'dashboard.view', attendance: 'attendance.view', activities: 'activities.view', students: 'students.view', allstudents: 'students.view', classes: 'classes.manage', reports: 'reports.view', tools: 'tools.view', data: 'data.view', logs: 'logs.view', users: 'users.manage', roles: 'roles.manage' };
 const ACT_PERM = {
   'new-class': 'classes.manage', 'rename-class': 'classes.manage', 'delete-class': 'classes.manage',
   'act-new': 'activities.create', 'act-new-here': 'activities.create', 'act-edit': 'activities.edit', 'act-del': 'activities.delete', 'sess-new': 'activities.edit', 'sess-edit': 'activities.edit', 'sess-del': 'activities.edit',
@@ -277,6 +278,7 @@ const ACT_PERM = {
   'export-report': 'reports.export', 'export-all-csv': 'data.backup', 'export-json': 'data.backup',
   'restore-label': 'data.restore', wipe: 'data.wipe',
   'rename-class-id': 'classes.manage', 'delete-class-id': 'classes.manage', 'open-promote': 'students.edit', 'do-promote': 'students.edit', 'open-bulk': 'students.edit', 'do-bulk': 'students.edit',
+  'tool-gsave': 'tools.save', 'tool-gdel': 'tools.save', 'tool-merge': 'students.delete',
   'backup-create': 'data.backup', 'backup-download': 'data.backup', 'backup-restore': 'data.restore', 'log-undo': 'logs.undo', 'log-clear': 'logs.clear', 'log-clear-do': 'logs.clear',
 };
 function applyPerms() {
@@ -289,16 +291,34 @@ function applyPerms() {
   if (!Auth.can('activities.mark')) document.querySelectorAll('[data-snote]').forEach((el) => { el.disabled = true; });
 }
 
+/* Greita paieška visuose komitetuose: įvedus vardą, pasirodo sąrašas, o paspaudus atsidaro mokinio kortelė. */
+let gq = '';
+function gsearchResults() {
+  const box = document.getElementById('gres');
+  if (!box) return;
+  const q = UI.norm(gq.trim());
+  if (!q) { box.hidden = true; box.innerHTML = ''; return; }
+  const comName = new Map(state.classes.map((c) => [c.id, c.name]));
+  const hits = state.students.map((s) => {
+    const n = UI.norm(displayName(s) + ' ' + fullName(s)), rest = UI.norm((s.grade || '') + ' ' + (s.email || '') + ' ' + (s.parentEmail || ''));
+    const rank = n.startsWith(q) || UI.norm(s.last || '').startsWith(q) ? 0 : n.includes(q) ? 1 : rest.includes(q) ? 2 : 9;
+    return { s, rank };
+  }).filter((x) => x.rank < 9).sort((a, b) => a.rank - b.rank || fullName(a.s).localeCompare(fullName(b.s), 'lt')).slice(0, 10);
+  box.hidden = false;
+  box.innerHTML = hits.length ? hits.map(({ s }) => `<button class="gitem" data-act="gopen" data-sid="${s.id}">${avatar(s)}<span><b>${esc(displayName(s))}</b><small>${esc([s.grade, (s.classIds || []).map((id) => comName.get(id)).filter(Boolean).join(', ')].filter(Boolean).join(' · '))}</small></span></button>`).join('') : '<div class="gempty">Nieko nerasta</div>';
+}
 function renderSide() {
   const has = state.classes.length > 0;
   const dark = currentTheme() === 'dark';
   side.innerHTML = `
     <div class="brand"><span class="logo">${ICON.check}</span>Lankomumas</div>
+    ${state.students.length ? `<div class="gsearch"><input id="gsearch" type="search" placeholder="Ieškoti mokinio…" autocomplete="off" aria-label="Ieškoti mokinio visuose komitetuose" value="${esc(gq)}"><div id="gres" class="gres" hidden></div></div>` : ''}
     ${has ? `<div class="class-box"><div class="lbl">Komitetas</div>
       <select id="classSelect" aria-label="Komitetas">${state.classes.map((c) => `<option value="${c.id}" ${c.id === state.currentClassId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
       <div class="class-links"><button class="link-btn" data-act="new-class">+ Nauja</button><button class="link-btn" data-act="rename-class">Pervadinti</button><button class="link-btn danger" data-act="delete-class">Ištrinti</button></div></div>` : ''}
     <nav class="nav">${NAV.filter(([k]) => Auth.can(VIEW_PERM[k])).map(([k, l, ic]) => `<button class="${view === k ? 'active' : ''}" data-act="tab" data-view="${k}">${ic}<span>${l}</span></button>`).join('')}</nav>
     <div class="side-foot">${Auth.userChip()}<button class="btn small" data-act="theme" aria-label="Keisti temą">${dark ? ICON.sun : ICON.moon}<span class="hide-sm">${dark ? 'Šviesi' : 'Tamsi'} tema</span></button></div>`;
+  gsearchResults();
 }
 
 function head(title, sub, actions) {
@@ -319,6 +339,7 @@ function render() {
   }
   renderInner();
   applyPerms();
+  UI.restoreFilters();
 }
 function renderInner() {
   const y = window.scrollY;
@@ -329,7 +350,7 @@ function renderInner() {
       <button class="btn primary" data-act="new-class">${ICON.plus} Sukurti komitetą</button></div>`;
     return;
   }
-  ({ dashboard: renderDashboard, students: renderStudents, allstudents: renderAllStudents, attendance: renderAttendance, activities: Acts.render, reports: renderReports, data: renderData, logs: Logs.render, classes: renderClasses, users: Auth.renderUsers, roles: Auth.renderRoles })[view]();
+  ({ dashboard: renderDashboard, students: renderStudents, allstudents: renderAllStudents, attendance: renderAttendance, activities: Acts.render, tools: Tools.render, reports: renderReports, data: renderData, logs: Logs.render, classes: renderClasses, users: Auth.renderUsers, roles: Auth.renderRoles })[view]();
   window.scrollTo(0, y);
 }
 
@@ -420,7 +441,7 @@ function renderAttendance() {
         <span class="pill p"><i></i>Dalyvavo ${c.P}</span><span class="pill a"><i></i>Nedalyvavo ${c.A}</span>
         <span class="pill l"><i></i>Vėlavo ${c.L}</span><span class="pill e"><i></i>Pateisinta ${c.E}</span><span class="pill n"><i></i>Nepažymėta ${c.none}</span>
       </div>
-      ${list.length ? `<div class="table-wrap"><table><thead><tr><th>Mokinys</th><th>Būsena</th><th class="hide-sm">Pastaba</th></tr></thead><tbody>${rows}</tbody></table></div>`
+      ${list.length ? `${list.length > 5 ? UI.filterBox({ fk: 'att', scope: '#attTbl', placeholder: 'Ieškoti mokinio…' }) : ''}<div class="table-wrap"><table id="attTbl"><thead><tr><th>Mokinys</th><th>Būsena</th><th class="hide-sm">Pastaba</th></tr></thead><tbody>${rows}</tbody></table></div>`
         : cur ? '<div class="empty"><p>Šioje veikloje dalyvių nėra.</p></div>'
           : `<div class="empty"><p>Šiame komitete mokinių dar nėra.</p><button class="btn primary" data-act="open-import">${ICON.upload} Importuoti mokinius</button></div>`}
     </div>`;
@@ -563,7 +584,7 @@ function renderReports() {
       ${grade ? `<select id="repGrade" aria-label="Klasė">${gradeList().map((g) => opt(g, g + ' klasė', repGrade)).join('')}${opt('-', 'Be klasės', repGrade)}</select>` : ''}
       <label class="muted">Nuo <input type="date" id="repFrom" value="${repFrom}"></label><label class="muted">Iki <input type="date" id="repTo" value="${repTo}"></label>${Auth.can('activities.view') ? `<label class="check" style="margin:0"><input type="checkbox" id="repAct" ${repAct ? 'checked' : ''}> Įskaičiuoti veiklų lankomumą į rodiklį</label>` : ''}</div></div>
     <div class="card"><h2>Pagal mokinį · ${esc(title)}</h2><p class="sub">Rodiklis = (dalyvavo + vėlavo) ÷ (dalyvavo + vėlavo + nedalyvavo). Pateisintos dienos neįskaičiuojamos.${grade ? ' Klasės ataskaitoje sumuojami visi mokinio komitetai.' : ''}</p>
-      ${list.length ? `<div class="table-wrap"><table><thead><tr><th>Mokinys</th>${grade ? '<th class="hide-sm">Komitetai</th>' : ''}<th class="num">Dalyvavo</th><th class="num">Nedalyvavo</th><th class="num">Vėlavo</th><th class="num">Pateisinta</th><th class="num">Rodiklis</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="muted">Nėra mokinių.</p>'}</div>
+      ${list.length ? `${list.length > 5 ? UI.filterBox({ fk: 'rep', scope: '#repTbl', placeholder: 'Ieškoti mokinio…' }) : ''}<div class="table-wrap"><table id="repTbl"><thead><tr><th>Mokinys</th>${grade ? '<th class="hide-sm">Komitetai</th>' : ''}<th class="num">Dalyvavo</th><th class="num">Nedalyvavo</th><th class="num">Vėlavo</th><th class="num">Pateisinta</th><th class="num">Rodiklis</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="muted">Nėra mokinių.</p>'}</div>
     <div class="card"><h2>Pagal dieną</h2><p class="sub">Tik dienos lankomumas (veiklų užsiėmimai – atskiroje kortelėje žemiau).</p>
       ${dayRows ? `<div class="table-wrap"><table><thead><tr><th>Data</th><th class="num">Dalyvavo</th><th class="num">Nedalyvavo</th><th class="num">Vėlavo</th><th class="num">Pateisinta</th></tr></thead><tbody>${dayRows}</tbody></table></div>` : '<p class="muted">Šiuo laikotarpiu lankomumo įrašų nėra.</p>'}</div>
     ${!grade && Auth.can('activities.view') ? Acts.reportCard(state.currentClassId, repFrom, repTo) : ''}`;
@@ -663,14 +684,14 @@ function openBulk() {
   document.getElementById('gradeList').innerHTML = gradeList().map((g) => `<option value="${esc(g)}"></option>`).join('');
   importDlg.showModal();
 }
-function doBulk() {
+async function doBulk() {
   const mode = importDlg.querySelector('input[name=bm]:checked').value;
   const com = importDlg.querySelector('#bmCom').value;
   const grade = importDlg.querySelector('#bmGrade').value.trim();
   const list = state.students.filter((s) => sel.has(s.id));
   if (!list.length) return;
   if (mode !== 'grade' && !com) { toast('Pasirinkite komitetą'); return; }
-  if (mode === 'grade' && !grade && !confirm('Klasė bus išvalyta pažymėtiems mokiniams. Tęsti?')) return;
+  if (mode === 'grade' && !grade && !await UI.confirm('Klasė bus išvalyta pažymėtiems mokiniams. Tęsti?')) return;
   const cname = (state.classes.find((c) => c.id === com) || {}).name || '';
   let n = 0, skipped = 0;
   list.forEach((s) => {
@@ -712,7 +733,7 @@ form.addEventListener('submit', (e) => {
   };
   if (!data.first || !Auth.can('students.edit')) return;
   data.classIds = [...form.querySelectorAll('input[name="com"]:checked')].map((x) => x.value);
-  if (!data.classIds.length) { e.preventDefault(); alert('Pasirinkite bent vieną komitetą.'); return; }
+  if (!data.classIds.length) { e.preventDefault(); UI.alert('Pasirinkite bent vieną komitetą.'); return; }
   if (form.id.value) {
     const st = state.students.find((s) => s.id === form.id.value), ids = data.classIds;
     delete data.classIds; Object.assign(st, data); setStudentClasses(st, ids);
@@ -835,7 +856,8 @@ function allAttendanceCSV(cid, from, to) {
 }
 
 /* ---------- events ---------- */
-document.addEventListener('click', (e) => {
+document.addEventListener('click', async (e) => {
+  if (!e.target.closest('.gsearch')) { const gr = document.getElementById('gres'); if (gr) gr.hidden = true; }
   if (e.target === importDlg) { importDlg.close(); return; }
   if (e.target === dialog) { dialog.close(); return; }
   if (e.target === cardDlg) { cardDlg.close(); return; }
@@ -845,24 +867,24 @@ document.addEventListener('click', (e) => {
   const cid = state.currentClassId;
   if (ACT_PERM[act] && !Auth.can(ACT_PERM[act])) { toast('Neturite teisės atlikti šio veiksmo'); return; }
   switch (act) {
-    case 'tab': view = el.dataset.view; sel.clear(); Logs.reset(); Backups.reset(); Auth.invalidate(); Acts.closeReport(); render(); window.scrollTo(0, 0); Acts.refresh().then((ch) => { if (ch) render(); }); break;
+    case 'tab': view = el.dataset.view; sel.clear(); UI.clearFilters(); Logs.reset(); Backups.reset(); Auth.invalidate(); Acts.closeReport(); render(); window.scrollTo(0, 0); Acts.refresh().then((ch) => { if (ch) render(); }); break;
     case 'go-attendance': view = 'attendance'; render(); break;
     case 'theme':
       try { localStorage.setItem(THEME_KEY, currentTheme() === 'dark' ? 'light' : 'dark'); } catch (err) { /* ignore */ }
       applyTheme(); render(); break;
     case 'new-class': {
-      const name = (prompt('Komiteto pavadinimas?') || '').trim();
+      const name = ((await UI.prompt('Naujas komitetas', '', { label: 'Komiteto pavadinimas', okText: 'Sukurti' })) || '').trim();
       if (!name) break;
       const c = { id: uid(), name };
       state.classes.push(c); state.currentClassId = c.id; save(); render(); break;
     }
     case 'rename-class': {
-      const c = curClass(); const name = (prompt('Naujas pavadinimas?', c.name) || '').trim();
+      const c = curClass(); const name = ((await UI.prompt('Pervadinti komitetą', c.name, { label: 'Naujas pavadinimas' })) || '').trim();
       if (name) { c.name = name; save(); render(); } break;
     }
     case 'delete-class': {
       const c = curClass();
-      if (!confirm(`Ištrinti komitetą „${c.name}“ ir jo lankomumo įrašus? Mokiniai, kurie yra tik šiame komitete, bus ištrinti; kituose komitetuose esantys liks.`)) break;
+      if (!await UI.confirm(`Ištrinti komitetą „${c.name}“ ir jo lankomumo įrašus? Mokiniai, kurie yra tik šiame komitete, bus ištrinti; kituose komitetuose esantys liks.`)) break;
       removeCommittee(c.id);
       save(); render(); break;
     }
@@ -872,12 +894,13 @@ document.addEventListener('click', (e) => {
       render(); break;
     }
     case 'all-present': classStudents().forEach((s) => { if (!getRec(cid, attDate, s.id).s) setRec(cid, attDate, s.id, { s: 'P' }); }); render(); break;
-    case 'clear-day': if (confirm('Išvalyti visas šios dienos žymas?')) { delete (state.records[cid] || {})[attDate]; save(); render(); } break;
+    case 'clear-day': if (await UI.confirm('Išvalyti visas šios dienos žymas?')) { delete (state.records[cid] || {})[attDate]; save(); render(); } break;
     case 'prev-day': attDate = shiftDate(attDate, -1); attSession = ''; render(); break;
     case 'next-day': attDate = shiftDate(attDate, 1); attSession = ''; render(); break;
     case 'today': attDate = today(); attSession = ''; render(); break;
     case 'add-student': openStudentDialog(null); break;
     case 'student-card': openCard(el.dataset.sid); break;
+    case 'gopen': { gq = ''; const gi = document.getElementById('gsearch'); if (gi) gi.value = ''; gsearchResults(); openCard(el.dataset.sid); break; }
     case 'close-card': cardDlg.close(); break;
     case 'print-card': { const st = state.students.find((x) => x.id === el.dataset.sid); document.body.classList.add('print-card'); logClient('print-card', st ? displayName(st) : ''); setTimeout(() => window.print(), 50); break; }
     case 'print-page': printPage(el.dataset.what, el.dataset.what === 'print-day' ? curClass().name + ' ' + attDate + (attSession && attSession !== '-' ? ' · ' + Acts.sessionLabel(attSession) : '') : reportData().title + ' ' + repFrom + '–' + repTo); break;
@@ -891,12 +914,12 @@ document.addEventListener('click', (e) => {
     case 'do-promote': doPromote(); break;
     case 'rename-class-id': {
       const c = state.classes.find((x) => x.id === el.dataset.cid);
-      const name = c ? (prompt('Naujas pavadinimas?', c.name) || '').trim() : '';
+      const name = c ? ((await UI.prompt('Pervadinti komitetą', c.name, { label: 'Naujas pavadinimas' })) || '').trim() : '';
       if (name) { c.name = name; save(); render(); } break;
     }
     case 'delete-class-id': {
       const c = state.classes.find((x) => x.id === el.dataset.cid);
-      if (!c || !confirm(`Ištrinti komitetą „${c.name}“ ir jo lankomumo įrašus? Mokiniai, kurie yra tik šiame komitete, bus ištrinti; kituose komitetuose esantys liks.`)) break;
+      if (!c || !await UI.confirm(`Ištrinti komitetą „${c.name}“ ir jo lankomumo įrašus? Mokiniai, kurie yra tik šiame komitete, bus ištrinti; kituose komitetuose esantys liks.`)) break;
       removeCommittee(c.id);
       save(); render(); break;
     }
@@ -906,10 +929,10 @@ document.addEventListener('click', (e) => {
     case 'delete-student': {
       const s = state.students.find((x) => x.id === el.dataset.sid);
       if ((s.classIds || []).length > 1) {
-        if (!confirm(`Pašalinti ${displayName(s)} iš komiteto „${curClass().name}“? Mokinys liks kituose komitetuose.`)) break;
+        if (!await UI.confirm(`Pašalinti ${displayName(s)} iš komiteto „${curClass().name}“? Mokinys liks kituose komitetuose.`)) break;
         setStudentClasses(s, s.classIds.filter((x) => x !== cid));
       } else {
-        if (!confirm(`Ištrinti ${displayName(s)}?`)) break;
+        if (!await UI.confirm(`Ištrinti ${displayName(s)}?`)) break;
         state.students = state.students.filter((x) => x.id !== s.id);
         wipeStudentRecords(s.id);
       }
@@ -927,11 +950,11 @@ document.addEventListener('click', (e) => {
     }
     case 'export-json': logClient('export-json'); download(`attendance-backup-${today()}.json`, JSON.stringify(Object.assign({}, state, { activities: Acts.dump() }), null, 2), 'application/json'); break;
     case 'wipe':
-      if (confirm('Ištrinti VISUS komitetus, mokinius ir lankomumą iš serverio (visiems vartotojams)?') && confirm('Šio veiksmo atšaukti negalima. Tikrai viską ištrinti?')) {
+      if (await UI.confirm('Ištrinti VISUS komitetus, mokinius ir lankomumą iš serverio (visiems vartotojams)?') && await UI.confirm('Šio veiksmo atšaukti negalima. Tikrai viską ištrinti?', { danger: true, okText: 'Ištrinti viską' })) {
         state = { classes: [], students: [], records: {}, currentClassId: null }; Sync.tag('Ištrinti visi duomenys'); save(); render();
       }
       break;
-    default: if (!Acts.act(act, el) && !Logs.act(act, el) && !Backups.act(act, el)) Auth.act(act, el);
+    default: if (!Tools.act(act, el) && !Acts.act(act, el) && !Logs.act(act, el) && !Backups.act(act, el)) Auth.act(act, el);
   }
 });
 
@@ -952,18 +975,19 @@ document.addEventListener('change', (e) => {
   else if (t.id === 'importSkip') updateImportPreview();
   else if (t.dataset && t.dataset.note) { if (Auth.can('attendance.mark')) setRec(state.currentClassId, attDate, t.dataset.note, { n: t.value.trim() }); }
   else if (t.id === 'jsonFile' && t.files[0] && Auth.can('data.restore')) {
-    t.files[0].text().then((text) => {
+    t.files[0].text().then(async (text) => {
       try {
         const s = JSON.parse(text);
         if (!s || !Array.isArray(s.classes) || !Array.isArray(s.students) || typeof s.records !== 'object') throw new Error('bad');
-        if (!confirm('Pakeisti VISUS serverio duomenis kopijos duomenimis?')) return;
+        if (!await UI.confirm('Pakeisti VISUS serverio duomenis kopijos duomenimis?')) return;
         restoreState(s, 'Atkurta iš failo');
-      } catch (err) { alert('Tai nėra tinkama atsarginė kopija.'); }
+      } catch (err) { UI.alert('Tai nėra tinkama atsarginė kopija.'); }
     });
   }
 });
 
 document.addEventListener('input', (e) => {
+  if (e.target.id === 'gsearch') { gq = e.target.value; gsearchResults(); return; }
   if (e.target.id === 'search') {
     search = e.target.value;
     const pos = e.target.selectionStart;

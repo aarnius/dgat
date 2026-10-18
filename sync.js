@@ -86,7 +86,10 @@ const Sync = (() => {
 
   /* ---------- gavimas iš serverio ---------- */
   async function pull() {
-    const r = await api('/api/state');
+    /* Veiklos kraunamos lygiagrečiai su pagrindiniais duomenimis (anksčiau – paeiliui). */
+    const actP = typeof Acts !== 'undefined' ? Acts.refresh().catch(() => false) : Promise.resolve(false);
+    let r;
+    try { r = await api('/api/state'); } catch (e) { await actP; throw e; }
     const recs = nest(r.records);
     const next = { classes: r.classes, students: r.students.map(normStudent), records: recs, currentClassId: null };
     const changed = signature(next) !== signature(state);
@@ -95,8 +98,7 @@ const Sync = (() => {
     if (state.currentClassId && next.classes.some((c) => c.id === state.currentClassId)) cur = state.currentClassId;
     next.currentClassId = next.classes.some((c) => c.id === cur) ? cur : (next.classes[0] ? next.classes[0].id : null);
     state = next; snap = clone(state);
-    let actCh = false;
-    try { if (typeof Acts !== 'undefined') actCh = await Acts.refresh(); } catch (e) { /* ignore */ }
+    const actCh = await actP;
     return changed || actCh;
   }
   /* Fone atnaujina duomenis (kiti vartotojai gali būti ką nors pakeitę), bet netrukdo, kol žmogus rašo ar saugoma. */
@@ -120,7 +122,7 @@ const Sync = (() => {
     if (!old || !old.classes.length || state.classes.length) return;
     if (localStorage.getItem('attendance-legacy-declined')) return;
     if (!Auth.can('data.restore')) return;
-    if (!confirm('Šioje naršyklėje rasti seni lankomumo duomenys (iš versijos be serverio). Įkelti juos į serverį?')) {
+    if (!(await UI.confirm('Šioje naršyklėje rasti seni lankomumo duomenys (iš versijos be serverio). Įkelti juos į serverį?', { title: 'Seni duomenys', okText: 'Įkelti', cancelText: 'Ne' }))) {
       try { localStorage.setItem('attendance-legacy-declined', '1'); } catch (e) { /* ignore */ }
       return;
     }
@@ -134,6 +136,7 @@ const Sync = (() => {
     dirty = false; tagText = ''; snap = empty(); state = empty(); setStatus('', '');
     if (typeof Logs !== 'undefined') Logs.reset(true);
     if (typeof Acts !== 'undefined') Acts.reset();
+    if (typeof Tools !== 'undefined') Tools.reset(true);
     if (typeof Backups !== 'undefined') Backups.reset(true);
   }
 

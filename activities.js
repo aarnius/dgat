@@ -134,7 +134,7 @@ const Acts = (() => {
       return `<tr><td class="nowrap"><b>${esc(s.d)}</b>${tag}</td><td class="nowrap">${esc(hhmm(s) || '–')}</td><td>${esc(s.note || '')}</td><td class="num">${marked}/${ppl.length}</td>
         <td class="row-actions"><button class="btn small primary" data-act="sess-mark" data-ssid="${s.id}">Žymėti</button> <button class="btn small" data-act="sess-edit" data-aid="${a.id}" data-ssid="${s.id}">Redaguoti</button> <button class="btn small danger" data-act="sess-del" data-ssid="${s.id}">Ištrinti</button></td></tr>`;
     }).join('');
-    return `<div class="card">
+    return `<div class="card act-card">
       <div class="act-head"><div><h2>${esc(a.name)}</h2><p class="sub" style="margin:0">${[a.teacherName ? 'Atsakingas: ' + esc(a.teacherName) : '', a.place ? 'Vieta: ' + esc(a.place) : ''].filter(Boolean).join(' · ') || '&nbsp;'}</p></div>
         <div class="actions"><button class="btn small" data-act="act-report" data-aid="${a.id}">${ICON.chart} Ataskaita</button><button class="btn small" data-act="act-edit" data-aid="${a.id}">Redaguoti</button><button class="btn small" data-act="sess-new" data-aid="${a.id}">${ICON.plus} Užsiėmimas</button><button class="btn small danger" data-act="act-del" data-aid="${a.id}">Ištrinti</button></div></div>
       ${a.description ? `<p class="act-desc">${esc(a.description)}</p>` : ''}
@@ -150,7 +150,7 @@ const Acts = (() => {
     const list = D.activities.filter((a) => a.classId === cid);
     const canNew = Auth.can('activities.create');
     app.innerHTML = head('Veiklos', `${esc(com.name)} · veiklų: ${list.length}`, canNew ? `<button class="btn primary" data-act="act-new">${ICON.plus} Nauja veikla</button>` : '') +
-      (list.length ? list.map(card).join('') : `<div class="card empty"><div class="big">${ICON.cal}</div><h2>Veiklų dar nėra</h2>
+      (list.length ? UI.filterBox({ fk: 'acts', scope: '#actList', rows: '.act-card', placeholder: 'Ieškoti veiklos (pavadinimas, mokytojas, vieta)…' }) + '<div id="actList">' + list.map(card).join('') + '</div>' : `<div class="card empty"><div class="big">${ICON.cal}</div><h2>Veiklų dar nėra</h2>
         <p>Veikla – tai komiteto renginys ar pasikartojantys užsiėmimai (su datomis, laiku ir aprašymu), kuriuose žymimas lankomumas.</p>
         ${canNew ? `<button class="btn primary" data-act="act-new">${ICON.plus} Sukurti veiklą</button>` : ''}</div>`);
   }
@@ -184,7 +184,7 @@ const Acts = (() => {
         <button class="btn small" data-act="act-range-clear">Visas laikotarpis</button></div>
         ${a.description ? `<p class="act-desc" style="margin-bottom:0">${esc(a.description)}</p>` : ''}</div>
       <div class="card"><h2>Pagal dalyvį</h2><p class="sub">Užsiėmimų pasirinktame laikotarpyje: ${sess.length}. Rodiklis = (dalyvavo + vėlavo) ÷ (dalyvavo + vėlavo + nedalyvavo).</p>
-        ${ppl.length ? `<div class="table-wrap"><table><thead><tr><th>Mokinys</th><th class="num">Dalyvavo</th><th class="num">Nedalyvavo</th><th class="num">Vėlavo</th><th class="num">Pateisinta</th><th class="num">Rodiklis</th></tr></thead><tbody>${stRows}</tbody></table></div>` : '<p class="muted">Dalyvių nėra.</p>'}</div>
+        ${ppl.length ? `${UI.filterBox({ fk: 'actrep', scope: '#actRepTbl', placeholder: 'Ieškoti dalyvio…' })}<div class="table-wrap"><table id="actRepTbl"><thead><tr><th>Mokinys</th><th class="num">Dalyvavo</th><th class="num">Nedalyvavo</th><th class="num">Vėlavo</th><th class="num">Pateisinta</th><th class="num">Rodiklis</th></tr></thead><tbody>${stRows}</tbody></table></div>` : '<p class="muted">Dalyvių nėra.</p>'}</div>
       <div class="card"><h2>Pagal užsiėmimą</h2><p class="sub">&nbsp;</p>
         ${sess.length ? `<div class="table-wrap"><table><thead><tr><th>Data</th><th>Laikas</th><th>Aprašymas</th><th class="num">Dalyvavo</th><th class="num">Nedalyvavo</th><th class="num">Vėlavo</th><th class="num">Pateisinta</th><th class="num">Nepažymėta</th></tr></thead><tbody>${seRows}</tbody></table></div>` : '<p class="muted">Šiuo laikotarpiu užsiėmimų nėra.</p>'}</div>`;
   }
@@ -240,7 +240,7 @@ const Acts = (() => {
         <label id="actTeacherManual" style="${sel === 'manual' ? '' : 'display:none'}">Mokytojo vardas ir pavardė<input name="teacherName" maxlength="100" value="${esc(sel === 'manual' ? a.teacherName : '')}"></label>
         <label class="check"><input type="radio" name="pm" value="all" ${some ? '' : 'checked'}> Visi komiteto mokiniai</label>
         <label class="check"><input type="radio" name="pm" value="some" ${some ? 'checked' : ''}> Tik pasirinkti dalyviai</label>
-        <fieldset class="classpick" id="actPartPick" style="${some ? '' : 'display:none'}"><legend>Dalyviai</legend>${partList(cid, edit ? a.studentIds : [])}</fieldset>
+        <fieldset class="classpick" id="actPartPick" style="${some ? '' : 'display:none'}"><legend>Dalyviai</legend>${UI.filterBox({ scope: '#actPartPick', rows: 'label.check', placeholder: 'Ieškoti mokinio…' })}${partList(cid, edit ? a.studentIds : [])}</fieldset>
         ${edit ? '' : `<fieldset class="classpick" style="max-height:none"><legend>Pirmas užsiėmimas (neprivaloma)</legend>
           <div class="grid2"><label>Data<input type="date" name="d" value="${esc(dateHint || attDate)}"></label><label>Kartoti kas savaitę iki<input type="date" name="repeatUntil"></label></div>
           <div class="grid2"><label>Nuo<input type="time" name="from"></label><label>Iki<input type="time" name="to"></label></div>
@@ -306,7 +306,7 @@ const Acts = (() => {
     if (!f) return;
     if (t.name === 'teacher') document.getElementById('actTeacherManual').style.display = t.value === 'manual' ? '' : 'none';
     else if (t.name === 'pm') document.getElementById('actPartPick').style.display = t.value === 'some' ? '' : 'none';
-    else if (t.name === 'classId') document.getElementById('actPartPick').innerHTML = '<legend>Dalyviai</legend>' + partList(t.value, []);
+    else if (t.name === 'classId') document.getElementById('actPartPick').innerHTML = '<legend>Dalyviai</legend>' + UI.filterBox({ scope: '#actPartPick', rows: 'label.check', placeholder: 'Ieškoti mokinio…' }) + partList(t.value, []);
   });
 
   /* ---------- veiksmai ---------- */
@@ -325,7 +325,7 @@ const Acts = (() => {
         const x = actById.get(aid);
         if (!x) return true;
         const marks = sessionsOf(aid).reduce((n, s) => n + (rec.get(s.id) ? rec.get(s.id).size : 0), 0);
-        if (confirm(`Ištrinti veiklą „${x.name}“?\n\nBus pašalinta užsiėmimų: ${sessionsOf(aid).length} ir lankomumo žymų: ${marks}.`)) remove({ action: 'activity-delete', id: aid }, 'Veikla ištrinta');
+        UI.confirm(`Ištrinti veiklą „${x.name}“?\n\nBus pašalinta užsiėmimų: ${sessionsOf(aid).length} ir lankomumo žymų: ${marks}.`).then((ok) => { if (ok) remove({ action: 'activity-delete', id: aid }, 'Veikla ištrinta'); });
         return true;
       }
       case 'act-more': if (more.has(aid)) more.delete(aid); else more.add(aid); render(); return true;
@@ -333,7 +333,7 @@ const Acts = (() => {
       case 'sess-edit': openSessForm(aid, sessionsOf(aid).find((s) => s.id === ssid)); return true;
       case 'sess-del': {
         const s = D.sessions.find((x) => x.id === ssid);
-        if (s && confirm(`Ištrinti užsiėmimą ${s.d}? Šio užsiėmimo lankomumo žymos (${rec.get(ssid) ? rec.get(ssid).size : 0}) bus pašalintos.`)) remove({ action: 'session-delete', id: ssid }, 'Užsiėmimas ištrintas');
+        if (s) UI.confirm(`Ištrinti užsiėmimą ${s.d}? Šio užsiėmimo lankomumo žymos (${rec.get(ssid) ? rec.get(ssid).size : 0}) bus pašalintos.`).then((ok) => { if (ok) remove({ action: 'session-delete', id: ssid }, 'Užsiėmimas ištrintas'); });
         return true;
       }
       case 'sess-mark': {
@@ -350,10 +350,11 @@ const Acts = (() => {
       case 'pick-session': attSession = el.dataset.ssid; render(); return true;
       case 'smark': mark(ssid, el.dataset.sid, el.dataset.s); render(); return true;
       case 'sall-present': allPresent(ssid); render(); return true;
-      case 'sclear': if (confirm('Išvalyti visas šio užsiėmimo žymas?')) { clearSession(ssid); render(); } return true;
+      case 'sclear': UI.confirm('Išvalyti visas šio užsiėmimo žymas?').then((ok) => { if (ok) { clearSession(ssid); render(); } }); return true;
     }
     return false;
   }
 
-  return { render: renderPage, act, refresh, reset, dump, sessionsOn, participants, get, totals, infoHtml, sessionLabel, reportCard, cardSection, closeReport: () => { repId = null; }, hhmm };
+  const activitiesOf = (cid) => D.activities.filter((a) => a.classId === cid);
+  return { render: renderPage, act, refresh, activitiesOf, reset, dump, sessionsOn, participants, get, totals, infoHtml, sessionLabel, reportCard, cardSection, closeReport: () => { repId = null; }, hhmm };
 })();

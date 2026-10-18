@@ -15,7 +15,9 @@
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Šriftas kraunamas nesustabdant puslapio atvaizdavimo -->
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"></noscript>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -50,10 +52,12 @@
   <div id="saveStatus" class="save-status" aria-live="polite" hidden></div>
   <div id="printFooter" class="print-footer"></div>
 
+  <script src="ui.js"></script>
   <script src="auth.js"></script>
   <script src="sync.js"></script>
   <script src="log.js"></script>
   <script src="activities.js"></script>
+  <script src="tools.js"></script>
   <script src="app.js"></script>
   <script>if ("serviceWorker" in navigator) addEventListener("load", function () { navigator.serviceWorker.register("sw.js").catch(function () {}); });</script>
 </body>

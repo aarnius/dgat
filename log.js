@@ -1,6 +1,6 @@
 /* LOG (pakeitimų istorija) ir atsarginės kopijos serveryje. Naudoja app.js / auth.js funkcijas (api, esc, head, ICON, render...). */
 const Logs = (() => {
-  const KINDS = [['', 'Visi įvykiai'], ['attendance', 'Lankomumas'], ['activities', 'Veiklos'], ['students', 'Mokiniai'], ['committees', 'Komitetai'], ['data', 'Duomenys'], ['undo', 'Atšaukimai'],
+  const KINDS = [['', 'Visi įvykiai'], ['attendance', 'Lankomumas'], ['activities', 'Veiklos'], ['tools', 'Įrankiai'], ['students', 'Mokiniai'], ['committees', 'Komitetai'], ['data', 'Duomenys'], ['undo', 'Atšaukimai'],
     ['auth', 'Prisijungimai'], ['admin', 'Administravimas'], ['backup', 'Kopijos'], ['export', 'Eksportas / spausdinimas']];
   const kindName = (k) => { const x = KINDS.find((y) => y[0] === k); return x ? x[1] : k; };
   let f = { kind: '', from: '', to: '', q: '' }, items = [], more = false, st = 'idle', err = '';
@@ -50,7 +50,7 @@ const Logs = (() => {
 
   async function undo(id) {
     const x = items.find((i) => String(i.id) === String(id));
-    if (!x || !confirm(`Atšaukti šį pakeitimą?\n\n${x.summary}\n\nDuomenys bus grąžinti į buvusią būseną.`)) return;
+    if (!x || !(await UI.confirm(`Atšaukti šį pakeitimą?\n\n${x.summary}\n\nDuomenys bus grąžinti į buvusią būseną.`, { title: 'Atšaukti pakeitimą', okText: 'Atšaukti pakeitimą' }))) return;
     try {
       await Sync.flush();
       await api('/api/log', { action: 'undo', id: x.id });
@@ -76,7 +76,7 @@ const Logs = (() => {
     const all = importDlg.querySelector('input[name=lc]:checked').value === 'all';
     const from = importDlg.querySelector('#lcFrom').value, to = importDlg.querySelector('#lcTo').value;
     if (!all && !from && !to) { toast('Pasirinkite bent vieną datą arba „Visi įrašai“'); return; }
-    if (!confirm(all ? 'Tikrai ištrinti VISĄ LOG?' : `Ištrinti LOG įrašus ${from || '…'} – ${to || '…'}?`)) return;
+    if (!(await UI.confirm(all ? 'Tikrai ištrinti VISĄ LOG?' : `Ištrinti LOG įrašus ${from || '…'} – ${to || '…'}?`, { title: 'Valyti LOG', okText: 'Išvalyti', danger: true }))) return;
     try {
       const r = await api('/api/log', all ? { action: 'clear', all: true } : { action: 'clear', from, to });
       importDlg.close(); toast(`Pašalinta įrašų: ${r.removed}`);
@@ -137,7 +137,7 @@ const Backups = (() => {
     } catch (e) { toast(e.message); }
   }
   async function restore(id) {
-    if (!confirm('Pakeisti VISUS dabartinius duomenis šios kopijos duomenimis? (Pakeitimą bus galima atšaukti skiltyje LOG.)')) return;
+    if (!(await UI.confirm('Pakeisti VISUS dabartinius duomenis šios kopijos duomenimis? (Pakeitimą bus galima atšaukti skiltyje LOG.)', { title: 'Atkurti iš kopijos' }))) return;
     try {
       await Sync.flush();
       const d = await api('/api/backup?id=' + id);
