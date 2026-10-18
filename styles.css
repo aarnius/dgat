@@ -271,7 +271,7 @@ body { overscroll-behavior-y: none; }
 dialog { max-height: 92dvh; }
 .save-status { top: max(12px, env(safe-area-inset-top)); }
 @media (max-width: 820px) {
-  input, select, textarea, .note-input { font-size: 16px; }          /* kad iOS nepriartintų lauko */
+  input, select, textarea, .note-input { font-size: 16px; } /* kad iOS nepriartintų lauko */
   .btn { min-height: 42px; }
   .btn.small { min-height: 36px; padding: 8px 12px; }
   .icon-btn { width: 42px; height: 42px; }
@@ -307,7 +307,7 @@ dialog { max-height: 92dvh; }
   .side-foot .btn.small { width: 42px; min-height: 42px; padding: 0; justify-content: center; }
   .userchip { flex: none; }
   .class-box { order: 3; flex: 1 1 100%; min-width: 0; padding: 4px; }
-  .class-links { display: none; }               /* klasių valdymas yra skiltyje „Klasės“ */
+  .class-links { display: none; } /* klasių valdymas yra skiltyje „Klasės“ */
   .class-box select { min-height: 42px; }
   body { background-attachment: scroll; }
   .content { padding-top: 16px; padding-bottom: calc(92px + env(safe-area-inset-bottom)); }
@@ -411,11 +411,10 @@ th.selcol, td.selcol { width: 34px; padding-right: 0; }
   background: color-mix(in srgb, var(--l) 14%, transparent); border: 1px solid color-mix(in srgb, var(--l) 40%, transparent); }
 .kind.k-activities { background: color-mix(in srgb, var(--p) 16%, transparent); color: var(--p); }
 .print-footer { display: none; }
-
-/* spausdinimo apačia: „Dokumento sukūrėjas“ kiekviename puslapyje */
+/* spausdinimo apačia: „Dokumento sukūrėjas“ – iškart po turiniu, be atskiro lapo */
 @media print {
-  @page { margin: 14mm 14mm 20mm; }
-  .print-footer { display: block; position: fixed; left: 0; right: 0; bottom: -10mm; font-size: 10.5px; color: #444; border-top: 1px solid #999; padding-top: 3px; }
+  body, .shell { min-height: 0 !important; }
+  .print-footer { display: block; margin-top: 6mm; font-size: 10.5px; color: #444; border-top: 1px solid #999; padding-top: 3px; break-inside: avoid; }
   .sess-tabs, .notice { display: none !important; }
 }
 
@@ -473,4 +472,24 @@ table.sheet .sigcol { width: 38%; }
   table.sheet td, table.sheet th { border: 1px solid #888 !important; }
   .grp { background: none; border: 1px solid #888; }
   .draw-stage { background: none; }
+}
+
+/* ---------- v12: kalendorius ---------- */
+.cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.cal-wd { text-align: center; font-size: 0.72rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 0; }
+.cal-day { min-height: 92px; min-width: 0; display: flex; flex-direction: column; gap: 4px; padding: 6px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); }
+.cal-day.out { background: none; border-color: transparent; }
+.cal-day.today { border-color: var(--brand); box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 25%, transparent); }
+.cal-num { display: flex; justify-content: space-between; align-items: baseline; font-weight: 700; font-size: 0.85rem; }
+.cal-att { font-size: 0.68rem; font-weight: 700; color: var(--p); }
+.cal-ev { display: block; width: 100%; padding: 3px 6px; border: 0; border-radius: 8px; text-align: left; font: inherit; font-size: 0.74rem; color: var(--text); background: color-mix(in srgb, var(--brand) 14%, var(--surface)); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-ev:hover { background: color-mix(in srgb, var(--brand) 26%, var(--surface)); }
+@media (max-width: 820px) {
+  .cal-grid { gap: 3px; }
+  .cal-day { min-height: 60px; padding: 4px; border-radius: 8px; }
+  .cal-ev { font-size: 0.64rem; padding: 2px 4px; }
+}
+@media print {
+  .cal-day { min-height: 70px; background: none; border: 1px solid #888; break-inside: avoid; }
+  .cal-ev { background: none; padding: 0; white-space: normal; }
 }

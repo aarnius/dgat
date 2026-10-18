@@ -1,4 +1,5 @@
-/* Automatinis išsaugojimas serveryje: po kiekvieno pakeitimo siunčiamas tik skirtumas nuo paskutinės serverio būsenos. */
+/* Automatinis išsaugojimas serveryje: po kiekvieno pakeitimo siunčiamas tik skirtumas nuo paskutinės serverio būsenos.
+   Foninis atnaujinimas pirmiausia lygina duomenų versiją – jei niekas nepasikeitė, viso žurnalo nebesiunčiama. */
 const Sync = (() => {
   const CUR_KEY = 'attendance-current-class';
   const empty = () => ({ classes: [], students: [], records: {}, currentClassId: null });
@@ -11,7 +12,14 @@ const Sync = (() => {
     return recs;
   };
   let snap = empty(), timer = null, retry = null, busy = false, dirty = false, hideT = null;
-  const clone = (x) => JSON.parse(JSON.stringify(x));
+  let lastV = ''; /* paskutinė iš serverio gauta duomenų versija */
+
+  /* structuredClone daug greitesnis už JSON kopijavimą; jei nepavyktų – grįžtame prie seno būdo. */
+  const clone = (x) => {
+    if (typeof structuredClone === 'function') { try { return structuredClone(x); } catch (e) { /* ignore */ } }
+    return JSON.parse(JSON.stringify(x));
+  };
+  const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 
   function setStatus(kind, msg) {
     const e = document.getElementById('saveStatus');
@@ -25,14 +33,7 @@ const Sync = (() => {
   const sigC = (c) => JSON.stringify([c.id, c.name]);
   const sigS = (s) => JSON.stringify([s.id, (s.classIds || []).slice().sort(), s.first || '', s.last || '', s.email || '', s.parentEmail || '', s.notes || '', s.grade || '']);
   const stud = (s) => ({ id: s.id, classIds: (s.classIds || []).slice().sort(), first: s.first || '', last: s.last || '', email: s.email || '', parentEmail: s.parentEmail || '', notes: s.notes || '', grade: s.grade || '' });
-  function flat(st) {
-    const m = new Map();
-    for (const c in st.records) for (const d in st.records[c]) for (const sid in st.records[c][d]) {
-      const r = st.records[c][d][sid];
-      m.set(c + '|' + d + '|' + sid, { c, d, sid, s: r.s || '', n: r.n || '' });
-    }
-    return m;
-  }
+
   function diffList(oldL, newL, sig, map) {
     const o = new Map(oldL.map((x) => [x.id, x])), n = new Map(newL.map((x) => [x.id, x]));
     const up = [], del = [];
@@ -40,16 +41,38 @@ const Sync = (() => {
     o.forEach((v, k) => { if (!n.has(k)) del.push(k); });
     return { up, del };
   }
+
+  /* Lankomumo įrašai lyginami tiesiogiai įdėtiniuose objektuose – be tarpinių Map ir milžiniškų eilučių. */
+  function diffRecords(ra, rb) {
+    const up = [], del = [];
+    for (const c in rb) {
+      const bc = rb[c], ac = own(ra, c) ? ra[c] : {};
+      for (const d in bc) {
+        const bd = bc[d], ad = own(ac, d) ? ac[d] : {};
+        for (const sid in bd) {
+          const v = bd[sid], p = own(ad, sid) ? ad[sid] : null;
+          const s = v.s || '', n = v.n || '';
+          if (!p || (p.s || '') !== s || (p.n || '') !== n) up.push({ c, d, sid, s, n });
+        }
+      }
+    }
+    for (const c in ra) {
+      const ac = ra[c], bc = own(rb, c) ? rb[c] : {};
+      for (const d in ac) {
+        const bd = own(bc, d) ? bc[d] : {};
+        for (const sid in ac[d]) if (!own(bd, sid)) del.push({ c, d, sid });
+      }
+    }
+    return { up, del };
+  }
+
   function diff(a, b) {
     const classes = diffList(a.classes, b.classes, sigC, (c) => ({ id: c.id, name: c.name }));
     const students = diffList(a.students, b.students, sigS, stud);
-    const fa = flat(a), fb = flat(b), rUp = [], rDel = [];
-    fb.forEach((v, k) => { const p = fa.get(k); if (!p || p.s !== v.s || p.n !== v.n) rUp.push(v); });
-    fa.forEach((v, k) => { if (!fb.has(k)) rDel.push({ c: v.c, d: v.d, sid: v.sid }); });
-    return { classes, students, records: { up: rUp, del: rDel } };
+    const records = diffRecords(a.records || {}, b.records || {});
+    return { classes, students, records };
   }
   const isEmpty = (o) => !o.classes.up.length && !o.classes.del.length && !o.students.up.length && !o.students.del.length && !o.records.up.length && !o.records.del.length;
-  const signature = (st) => JSON.stringify([st.classes.map(sigC).sort(), st.students.map(sigS).sort(), [...flat(st).entries()].map(([k, v]) => k + '=' + v.s + '|' + v.n).sort()]);
 
   /* ---------- saugojimas ---------- */
   function queue() {
@@ -60,6 +83,7 @@ const Sync = (() => {
     clearTimeout(timer); clearTimeout(retry);
     timer = setTimeout(flush, 250);
   }
+
   async function flush() {
     if (busy) return;
     busy = true;
@@ -85,14 +109,18 @@ const Sync = (() => {
   }
 
   /* ---------- gavimas iš serverio ---------- */
-  async function pull() {
-    /* Veiklos kraunamos lygiagrečiai su pagrindiniais duomenimis (anksčiau – paeiliui). */
+  /* useV = true: siunčiama turima versija; jei serveryje niekas nepasikeitė, duomenys nesiunčiami.
+     Be parametro (prisijungus, po klaidos, po atkūrimo) visada parsiunčiami pilni duomenys. */
+  async function pull(useV) {
+    /* Veiklos kraunamos lygiagrečiai su pagrindiniais duomenimis. */
     const actP = typeof Acts !== 'undefined' ? Acts.refresh().catch(() => false) : Promise.resolve(false);
     let r;
-    try { r = await api('/api/state'); } catch (e) { await actP; throw e; }
+    try { r = await api(useV && lastV ? '/api/state?v=' + encodeURIComponent(lastV) : '/api/state'); } catch (e) { await actP; throw e; }
+    if (r && r.same) return await actP;
     const recs = nest(r.records);
     const next = { classes: r.classes, students: r.students.map(normStudent), records: recs, currentClassId: null };
-    const changed = signature(next) !== signature(state);
+    const changed = !isEmpty(diff(state, next));
+    lastV = r.v || '';
     let cur = null;
     try { cur = localStorage.getItem(CUR_KEY); } catch (e) { /* ignore */ }
     if (state.currentClassId && next.classes.some((c) => c.id === state.currentClassId)) cur = state.currentClassId;
@@ -101,6 +129,7 @@ const Sync = (() => {
     const actCh = await actP;
     return changed || actCh;
   }
+
   /* Fone atnaujina duomenis (kiti vartotojai gali būti ką nors pakeitę), bet netrukdo, kol žmogus rašo ar saugoma. */
   async function softPull() {
     if (!Auth.user() || dirty || busy || document.hidden) return;
@@ -110,7 +139,7 @@ const Sync = (() => {
       let ch = await Auth.refreshMe();
       if (!Auth.user()) return;
       if (dirty || busy) return;
-      ch = (await pull()) || ch;
+      ch = (await pull(true)) || ch;
       if (ch) render();
     } catch (e) { /* ignore */ }
   }
@@ -133,7 +162,7 @@ const Sync = (() => {
 
   function reset() {
     clearTimeout(timer); clearTimeout(retry);
-    dirty = false; tagText = ''; snap = empty(); state = empty(); setStatus('', '');
+    dirty = false; tagText = ''; lastV = ''; snap = empty(); state = empty(); setStatus('', '');
     if (typeof Logs !== 'undefined') Logs.reset(true);
     if (typeof Acts !== 'undefined') Acts.reset();
     if (typeof Tools !== 'undefined') Tools.reset(true);
