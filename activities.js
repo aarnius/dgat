@@ -58,6 +58,19 @@ const Acts = (() => {
     });
     return fin(t);
   }
+  /* Mokinio atskiri veiklų įrašai (data, būsena, pastaba) – kortelei ir „iš eilės“ skaičiavimui (o: cid, from, to). */
+  function marks(sid, o) {
+    o = o || {};
+    const out = [];
+    D.sessions.forEach((s) => {
+      if ((o.from && s.d < o.from) || (o.to && s.d > o.to)) return;
+      const a = actById.get(s.aid);
+      if (!a || (o.cid && a.classId !== o.cid)) return;
+      const m = rec.get(s.id), r = m && m.get(sid);
+      if (r && (r.s || r.n)) out.push({ d: s.d, s: r.s, n: r.n, act: a.name, classId: a.classId });
+    });
+    return out;
+  }
   /* Veiklos suvestinė visiems dalyviams. */
   function actTotals(a, from, to) {
     const t = blank(); let n = 0;
@@ -356,5 +369,5 @@ const Acts = (() => {
   }
 
   const activitiesOf = (cid) => D.activities.filter((a) => a.classId === cid);
-  return { render: renderPage, act, refresh, activitiesOf, reset, dump, sessionsOn, participants, get, totals, infoHtml, sessionLabel, reportCard, cardSection, closeReport: () => { repId = null; }, hhmm };
+  return { render: renderPage, act, refresh, activitiesOf, reset, dump, sessionsOn, participants, get, totals, marks, infoHtml, sessionLabel, reportCard, cardSection, closeReport: () => { repId = null; }, hhmm };
 })();
