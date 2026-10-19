@@ -167,6 +167,7 @@ const Sync = (() => {
     if (typeof Acts !== 'undefined') Acts.reset();
     if (typeof Tools !== 'undefined') Tools.reset(true);
     if (typeof Backups !== 'undefined') Backups.reset(true);
+    if (typeof Dash !== 'undefined') Dash.reset();
   }
 
   window.addEventListener('beforeunload', (e) => { if (dirty || busy) { e.preventDefault(); e.returnValue = ''; } });

@@ -1,5 +1,5 @@
 /* Attendance Tracker - single-page app, data stored in this browser (localStorage). */
-const APP_VERSION = '12 · Kalendorius apžvalgoje, redaguojami sąrašai'; // rodoma skiltyje „Duomenys“ ir prisijungimo lange
+const APP_VERSION = '13 · Pritaikoma apžvalga'; // rodoma skiltyje „Duomenys“ ir prisijungimo lange
 const KEY = 'attendance-tracker-v1';
 const THEME_KEY = 'attendance-theme';
 const STATUS = {
@@ -360,47 +360,7 @@ function greeting() {
   return h < 5 ? 'Dirbate vėlai' : h < 12 ? 'Labas rytas' : h < 18 ? 'Laba diena' : 'Labas vakaras';
 }
 
-function renderDashboard() {
-  const cid = state.currentClassId;
-  const list = classStudents();
-  const t = today();
-  const c = countDay(cid, t, list);
-  const monthFrom = t.slice(0, 8) + '01';
-  let abs = 0;
-  list.forEach((s) => { abs += stats(cid, s.id, monthFrom, t).A; });
-  const risk = list.map((s) => ({ s, st: stats(cid, s.id) }))
-    .filter((x) => x.st.rate != null && x.st.rate < 80 && x.st.P + x.st.L + x.st.A >= 3)
-    .sort((a, b) => a.st.rate - b.st.rate);
-  const marked = list.length - c.none;
-  const todayRate = c.P + c.L + c.A ? Math.round(((c.P + c.L) / (c.P + c.L + c.A)) * 100) : null;
-
-  const days = [];
-  for (let i = 13; i >= 0; i--) days.push(shiftDate(t, -i));
-  const bars = days.map((d) => {
-    const k = countDay(cid, d, list);
-    const den = k.P + k.L + k.A;
-    const r = den ? Math.round(((k.P + k.L) / den) * 100) : null;
-    return `<div class="bar" title="${d}: ${r == null ? 'nėra duomenų' : 'dalyvavo ' + r + '%'}"><b>${r == null ? '' : r}</b><div class="col ${r == null ? 'none' : ''}" style="height:${r == null ? 4 : Math.max(r, 4)}%"></div><span>${d.slice(8)}</span></div>`;
-  }).join('');
-  const anyData = days.some((d) => state.records[cid] && state.records[cid][d]);
-
-  app.innerHTML = head(`${greeting()}, ${esc(Auth.user().name.split(' ')[0])} 👋`, `${esc(curClass().name)} · ${prettyDate(t)}`,
-    `<button class="btn" data-act="open-import">${ICON.upload} Importuoti mokinius</button><button class="btn primary" data-act="go-attendance">${ICON.check} Žymėti lankomumą</button>`) +
-    `<div class="stats">
-      <div class="stat" style="--c:var(--brand)"><div class="k">Mokiniai</div><div class="v">${list.length}</div><div class="h">šiame komitete</div></div>
-      <div class="stat" style="--c:var(--p)"><div class="k">Šiandien dalyvavo</div><div class="v">${todayRate == null ? '–' : todayRate + '%'}</div><div class="h">pažymėta ${marked} iš ${list.length}</div></div>
-      <div class="stat" style="--c:var(--a)"><div class="k">Praleidimai šį mėnesį</div><div class="v">${abs}</div><div class="h">visame komitete</div></div>
-      <div class="stat" style="--c:var(--l)"><div class="k">Reikia dėmesio</div><div class="v">${risk.length}</div><div class="h">lankomumas žemiau 80%</div></div>
-    </div>
-    ${Tools.calendar ? Tools.calendar() : ''}
-    <div class="two-col">
-      <div class="card"><h2>Paskutinės 14 dienų</h2><p class="sub">Dalyvavusių ar pavėlavusių pažymėtų mokinių dalis (%).</p>
-        ${anyData ? `<div class="bars">${bars}</div>` : '<p class="muted">Lankomumas dar nepažymėtas. Pažymėkite lankomumą, kad pamatytumėte tendenciją.</p>'}</div>
-      <div class="card"><h2>Reikia dėmesio</h2><p class="sub">Mokiniai, kurių lankomumas žemiau 80% (bent 3 pažymėtos dienos).</p>
-        ${risk.length ? `<div class="risk">${risk.slice(0, 6).map((x) => `<div class="risk-item">${avatar(x.s)}<div class="grow"><b>${esc(displayName(x.s))}</b><br><small class="muted">nedalyvavo ${x.st.A} · vėlavo ${x.st.L}</small></div>${rateBadge(x.st.rate)}</div>`).join('')}</div>`
-          : '<p class="muted">Niekas nėra žemiau 80%. Puiku!</p>'}</div>
-    </div>`;
-}
+function renderDashboard() { Dash.render(); } /* kortelės ir jų pritaikymas – dashboard.js */
 
 function renderAttendance() {
   const cid = state.currentClassId;
@@ -958,7 +918,7 @@ document.addEventListener('click', async (e) => {
         state = { classes: [], students: [], records: {}, currentClassId: null }; Sync.tag('Ištrinti visi duomenys'); save(); render();
       }
       break;
-    default: if (!Tools.act(act, el) && !Acts.act(act, el) && !Logs.act(act, el) && !Backups.act(act, el)) Auth.act(act, el);
+    default: if (!Dash.act(act, el) && !Tools.act(act, el) && !Acts.act(act, el) && !Logs.act(act, el) && !Backups.act(act, el)) Auth.act(act, el);
   }
 });
 
