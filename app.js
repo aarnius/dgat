@@ -824,6 +824,8 @@ function openCard(id) {
   const comRows = coms.map((c) => { const t = stats(c.id, s.id); return `<tr><td>${esc(c.name)}</td><td class="num">${t.P}</td><td class="num">${t.A}</td><td class="num">${t.L}</td><td class="num">${t.E}</td><td class="num">${rateBadge(t.rate)}</td></tr>`; }).join('');
   const ev = [];
   coms.forEach((c) => { const recs = state.records[c.id] || {}; for (const d in recs) { const r = recs[d][s.id]; if (r && (r.s === 'A' || r.s === 'L' || r.s === 'E' || r.n)) ev.push({ d, c: c.name, s: r.s, n: r.n }); } });
+  const cn = new Map(coms.map((c) => [c.id, c.name]));
+  Acts.marks(s.id).forEach((m) => { if (m.s === 'A' || m.s === 'L' || m.s === 'E' || m.n) ev.push({ d: m.d, c: (cn.get(m.classId) || '') + ' · ' + m.act, s: m.s, n: m.n }); });
   ev.sort((a, b) => b.d.localeCompare(a.d));
   const evRows = ev.slice(0, 40).map((x) => `<tr><td class="nowrap">${x.d}</td><td>${esc(x.c)}</td><td>${x.s ? `<span class="pill ${STATUS[x.s].cls}"><i></i>${STATUS[x.s].label}</span>` : '–'}</td><td>${esc(x.n || '')}</td></tr>`).join('');
   cardDlg.innerHTML = `<div class="dlg">

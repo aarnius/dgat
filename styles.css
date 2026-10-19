@@ -528,3 +528,8 @@ table.sheet.fs-l { font-size: 1.05rem; }
   tr, .grp, .cal-day { break-inside: avoid; page-break-inside: avoid; }
   .table-wrap { overflow: visible !important; }
 }
+
+/* ---------- v15: spausdinant nerodomas „Pridėti pastabą“, jei pastabos nėra ---------- */
+@media print {
+  .note-input::placeholder, .th-in::placeholder, .search::placeholder { color: transparent !important; opacity: 0 !important; }
+}

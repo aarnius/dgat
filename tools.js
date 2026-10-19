@@ -230,7 +230,11 @@ const Tools = (() => {
         const recs = state.records[c] || {};
         for (const d in recs) { if ((from && d < from) || (to && d > to)) continue; const r = recs[d][s.id]; if (r && r.s) seq.push([d, r.s]); }
       });
-      if (useActs) { const x = Acts.totals(s.id, R.scope === 'all' ? { from, to } : { cid: cid(), from, to }); t.P += x.P; t.A += x.A; t.L += x.L; t.E += x.E; }
+      if (useActs) {
+        const o = R.scope === 'all' ? { from, to } : { cid: cid(), from, to };
+        const x = Acts.totals(s.id, o); t.P += x.P; t.A += x.A; t.L += x.L; t.E += x.E;
+        Acts.marks(s.id, o).forEach((m) => { if (m.s) seq.push([m.d, m.s]); }); /* veiklų užsiėmimai įskaičiuojami į „iš eilės“ ir „paskutinis praleidimas“ */
+      }
       seq.sort((a, b) => a[0].localeCompare(b[0]));
       let streak = 0, lastAbs = '';
       for (let i = seq.length - 1; i >= 0; i--) { if (seq[i][1] === 'A') streak++; else if (seq[i][1] === 'E') continue; else break; }
