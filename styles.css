@@ -517,3 +517,14 @@ table.sheet.fs-l { font-size: 1.05rem; }
 .userchip-btn .hide-sm { flex: 1 1 auto; min-width: 0; }
 .userchip-btn b, .userchip-btn small { display: block; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
 .userchip-btn .chip-edit { flex: none; }
+
+/* ---------- v14: spausdinimas – ilgos lentelės neberiamos į kitą puslapį ---------- */
+@media print {
+  /* Anksčiau kortelė su ilga lentele (pvz. rizikos sąrašas) buvo „nedalijama“, todėl visa nušokdavo į kitą puslapį ir pirmas likdavo tuščias. */
+  .card { break-inside: auto; page-break-inside: auto; }
+  .card > h2, .card h4, .print-title, .sheet-head { break-after: avoid; page-break-after: avoid; }
+  thead { display: table-header-group; }   /* antraštė kartojama kiekviename puslapyje */
+  tfoot { display: table-footer-group; }
+  tr, .grp, .cal-day { break-inside: avoid; page-break-inside: avoid; }
+  .table-wrap { overflow: visible !important; }
+}

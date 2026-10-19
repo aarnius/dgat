@@ -372,7 +372,7 @@ const Tools = (() => {
   /* ---------- puslapis ---------- */
   function renderPage() {
     const body = { groups: renderGroups, draw: renderDraw, lists: renderLists, risk: renderRisk, dupes: renderDupes }[tab]();
-    app.innerHTML = head('Įrankiai', esc(curClass().name)) +
+    app.innerHTML = `<div class="no-print">${head('Įrankiai', esc(curClass().name))}</div>` +
       `<div class="tool-tabs no-print">${TABS.map(([k, l]) => `<button class="btn ${tab === k ? 'primary' : ''}" data-act="tool-tab" data-t="${k}">${l}</button>`).join('')}</div>` + body;
   }
 
