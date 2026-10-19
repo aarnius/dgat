@@ -20,12 +20,28 @@ const Dash = (() => {
   const allowed = (id) => W[id] && (!W[id].perm || Auth.can(W[id].perm));
 
   /* ---------- bendri skaičiavimai (vieną kartą per piešimą) ---------- */
+  /* Veiklų užsiėmimų lankomumas įskaičiuojamas į bendrą (jei vartotojas gali matyti veiklas). */
+  function dayCounts(x, d) {
+    const sess = x.useAct ? Acts.sessionsOn(x.cid, d) : [];
+    const c = { P: 0, A: 0, L: 0, E: 0, none: 0 };
+    x.list.forEach((s) => {
+      let any = false;
+      const r = getRec(x.cid, d, s.id);
+      if (r.s) { c[r.s]++; any = true; }
+      sess.forEach((ss) => { const m = Acts.get(ss.id, s.id); if (m.s) { c[m.s]++; any = true; } });
+      if (!any) c.none++;
+    });
+    return c;
+  }
   function ctx() {
     const cid = state.currentClassId, list = classStudents(), t = today(), monthFrom = t.slice(0, 8) + '01';
-    const c = countDay(cid, t, list);
-    const per = list.map((s) => ({ s, m: stats(cid, s.id, monthFrom, t), all: stats(cid, s.id) }));
+    const useAct = Auth.can('activities.view');
+    const withAct = (tt, s, o) => (useAct ? plusAct(tt, Acts.totals(s.id, o)) : tt);
+    const x0 = { cid, list, t, useAct };
+    const c = dayCounts(x0, t);
+    const per = list.map((s) => ({ s, m: withAct(stats(cid, s.id, monthFrom, t), s, { cid, from: monthFrom, to: t }), all: withAct(stats(cid, s.id), s, { cid }) }));
     const risk = per.filter((x) => x.all.rate != null && x.all.rate < 80 && x.all.P + x.all.L + x.all.A >= 3).sort((a, b) => a.all.rate - b.all.rate);
-    return { cid, list, t, monthFrom, c, per, risk };
+    return { cid, list, t, monthFrom, c, per, risk, useAct };
   }
   const pct = (a, b) => (b ? Math.round((a / b) * 100) : null);
   const stat = (col, k, v, h) => `<div class="stat" style="--c:var(${col})"><div class="k">${k}</div><div class="v">${v}</div><div class="h">${h}</div></div>`;
@@ -48,13 +64,13 @@ const Dash = (() => {
       const r = pct(x.c.P + x.c.L, x.c.P + x.c.L + x.c.A);
       return stat('--p', 'Šiandien dalyvavo', r == null ? '–' : r + '%', `pažymėta ${x.list.length - x.c.none} iš ${x.list.length}`);
     } },
-    absMonth: { t: 'Praleidimai šį mėnesį', d: 'Nedalyvavimų skaičius nuo mėnesio pradžios', w: 1, html: (x) => stat('--a', 'Praleidimai šį mėnesį', x.per.reduce((a, p) => a + p.m.A, 0), 'visame komitete') },
+    absMonth: { t: 'Praleidimai šį mėnesį', d: 'Nedalyvavimų skaičius nuo mėnesio pradžios', w: 1, html: (x) => stat('--a', 'Praleidimai šį mėnesį', x.per.reduce((a, p) => a + p.m.A, 0), x.useAct ? 'su veiklomis' : 'visame komitete') },
     riskCount: { t: 'Reikia dėmesio', d: 'Kiek mokinių žemiau 80%', w: 1, html: (x) => stat('--l', 'Reikia dėmesio', x.risk.length, 'lankomumas žemiau 80%') },
     rateMonth: { t: 'Mėnesio lankomumas', d: 'Komiteto lankomumo procentas šį mėnesį', w: 1, html: (x) => {
       const P = x.per.reduce((a, p) => a + p.m.P + p.m.L, 0), A = x.per.reduce((a, p) => a + p.m.A, 0), r = pct(P, P + A);
-      return stat('--p', 'Lankomumas šį mėnesį', r == null ? '–' : r + '%', 'visas komitetas');
+      return stat('--p', 'Lankomumas šį mėnesį', r == null ? '–' : r + '%', x.useAct ? 'su veiklomis' : 'visas komitetas');
     } },
-    lateMonth: { t: 'Vėlavimai šį mėnesį', d: 'Vėlavimų skaičius nuo mėnesio pradžios', w: 1, html: (x) => stat('--l', 'Vėlavimai šį mėnesį', x.per.reduce((a, p) => a + p.m.L, 0), 'visame komitete') },
+    lateMonth: { t: 'Vėlavimai šį mėnesį', d: 'Vėlavimų skaičius nuo mėnesio pradžios', w: 1, html: (x) => stat('--l', 'Vėlavimai šį mėnesį', x.per.reduce((a, p) => a + p.m.L, 0), x.useAct ? 'su veiklomis' : 'visame komitete') },
     allStudents: { t: 'Visi mokiniai', d: 'Mokinių ir komitetų skaičius iš viso', w: 1, html: () => stat('--brand-2', 'Visi mokiniai', state.students.length, `komitetų: ${state.classes.length}`) },
     actsMonth: { t: 'Veiklos šį mėnesį', d: 'Užsiėmimų skaičius šį mėnesį', w: 1, perm: 'activities.view', html: (x) => {
       const [y, m] = x.t.split('-').map(Number), n = new Date(y, m, 0).getDate();
@@ -66,10 +82,10 @@ const Dash = (() => {
       const days = [];
       for (let i = 13; i >= 0; i--) days.push(shiftDate(x.t, -i));
       const bars = days.map((d) => {
-        const k = countDay(x.cid, d, x.list), r = pct(k.P + k.L, k.P + k.L + k.A);
+        const k = dayCounts(x, d), r = pct(k.P + k.L, k.P + k.L + k.A);
         return `<div class="bar" title="${d}: ${r == null ? 'nėra duomenų' : 'dalyvavo ' + r + '%'}"><b>${r == null ? '' : r}</b><div class="col ${r == null ? 'none' : ''}" style="height:${r == null ? 4 : Math.max(r, 4)}%"></div><span>${d.slice(8)}</span></div>`;
       }).join('');
-      const any = days.some((d) => state.records[x.cid] && state.records[x.cid][d]);
+      const any = days.some((d) => (state.records[x.cid] && state.records[x.cid][d]) || (x.useAct && Acts.sessionsOn(x.cid, d).length));
       return card('Paskutinės 14 dienų', 'Dalyvavusių ar pavėlavusių pažymėtų mokinių dalis (%).', any ? `<div class="bars">${bars}</div>` : '<p class="muted">Lankomumas dar nepažymėtas. Pažymėkite lankomumą, kad pamatytumėte tendenciją.</p>');
     } },
     risk: { t: 'Reikia dėmesio (sąrašas)', d: 'Mokiniai su žemiausiu lankomumu', w: 2, html: (x) => card('Reikia dėmesio', 'Mokiniai, kurių lankomumas žemiau 80% (bent 3 pažymėtos dienos).',
@@ -115,6 +131,10 @@ const Dash = (() => {
         const [y, m, dd] = d.split('-').map(Number), wd = (new Date(y, m - 1, dd).getDay() + 6) % 7;
         for (const sid in recs[d]) { if (!ok.has(sid)) continue; const s = recs[d][sid].s; if (s === 'P' || s === 'L') a[wd].P++; else if (s === 'A') a[wd].A++; }
       }
+      if (x.useAct) x.list.forEach((st) => Acts.marks(st.id, { cid: x.cid }).forEach((m) => {
+        const [y, mo, dd] = m.d.split('-').map(Number), wd = (new Date(y, mo - 1, dd).getDay() + 6) % 7;
+        if (m.s === 'P' || m.s === 'L') a[wd].P++; else if (m.s === 'A') a[wd].A++;
+      }));
       const names = ['Pr', 'An', 'Tr', 'Kt', 'Pn', 'Št', 'Sk'];
       const bars = a.map((v, i) => { const r = pct(v.P, v.P + v.A); return `<div class="bar" title="${r == null ? 'nėra duomenų' : r + '%'}"><b>${r == null ? '' : r}</b><div class="col ${r == null ? 'none' : ''}" style="height:${r == null ? 4 : Math.max(r, 4)}%"></div><span>${names[i]}</span></div>`; }).join('');
       return card('Lankomumas pagal savaitės dieną', 'Visas laikotarpis', a.some((v) => v.P + v.A) ? `<div class="bars">${bars}</div>` : '<p class="muted">Dar nepakanka duomenų.</p>');
