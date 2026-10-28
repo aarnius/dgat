@@ -229,12 +229,24 @@ function detectDelim(line) {
   if (line.includes(';') && !line.includes(',')) return ';';
   return ',';
 }
+/* „vardas.pavarde@dgg.lt“ → { first: 'Vardas', last: 'Pavarde' } (Google Groups eksporte vardų stulpelių nėra) */
+function nameFromEmail(email) {
+  const parts = String(email || '').split('@')[0].split(/[._-]+/).filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+  return { first: parts[0] || '', last: parts.slice(1).join(' ') };
+}
+const EMAIL_HEAD = /^(el\.? ?pasto adresas|e-?mail( address)?)$/;
 function parseImport(text) {
   text = String(text || '').replace(/^\uFEFF/, '');
-  const firstLine = text.split(/\r?\n/).find((l) => l.trim()) || '';
+  const lines = text.split(/\r?\n/);
+  const firstLine = lines.find((l) => l.trim()) || '';
   if (!firstLine) return [];
-  const rows = parseCSV(text, detectDelim(firstLine));
+  const delimLine = lines.find((l) => /[,;\t]/.test(l)) || firstLine;
+  let rows = parseCSV(text, detectDelim(delimLine));
   if (!rows.length) return [];
+  /* Google Groups eksportas: pirma eilutė – grupės pavadinimas, antra – antraštė „El. pašto adresas…“ */
+  const hi = rows.findIndex((r) => r.some((c) => EMAIL_HEAD.test(UI.norm(c).trim())));
+  if (hi > 0) rows = rows.slice(hi);
   const head = rows[0].map((h) => h.trim().toLowerCase());
   const hasHead = head.some((h) => !h.includes('@') && /first|given|forename|last|surname|family|name|e-?mail|parent|guardian|vardas|pavard|mokin|pašt|tėv|globėj/.test(h));
   let items;
@@ -245,7 +257,8 @@ function parseImport(text) {
     const iFull = find(/^(full\s*)?name$|^student|^mokin/);
     const iParent = find(/parent|guardian|tėv|globėj/);
     const iGrade = find(/klas|class|grade/);
-    const iEmail = head.findIndex((h) => /mail|paštas/.test(h) && !/parent|guardian|tėv|globėj/.test(h));
+    let iEmail = head.findIndex((h) => EMAIL_HEAD.test(UI.norm(h).trim()));
+    if (iEmail < 0) iEmail = head.findIndex((h) => /mail|pašt/.test(h) && !/parent|guardian|tėv|globėj/.test(h));
     items = rows.slice(1).map((r) => {
       const cell = (i) => (i >= 0 ? (r[i] || '').trim() : '');
       let first = cell(iFirst), last = cell(iLast);
@@ -253,7 +266,12 @@ function parseImport(text) {
         const n = parseName(cell(iFull)) || { first: '', last: '' };
         first = n.first; last = n.last;
       }
-      return { first, last, email: cell(iEmail), parentEmail: cell(iParent), grade: cell(iGrade) };
+      let partial = false;
+      if (!first && !last && cell(iEmail).includes('@')) {
+        const n = nameFromEmail(cell(iEmail));
+        first = n.first; last = n.last; partial = !last; // be pavardės (pvz. arnas@…) – automatiškai nesiejame
+      }
+      return { first, last, email: cell(iEmail), parentEmail: cell(iParent), grade: cell(iGrade), partial };
     });
   } else if (rows[0].length === 1) {
     // one name per line: use the raw lines so "Last, First" isn't split into columns
@@ -264,6 +282,36 @@ function parseImport(text) {
   return items.filter((x) => x.first || x.last);
 }
 const keyOf = (s) => (s.first + '|' + s.last).toLowerCase().trim();
+/* Vardo raktas be lietuviškų raidžių ir nepriklausomas nuo žodžių tvarkos: „Aistė Matyziūtė“ = „matyziute aiste“ */
+const nameKey = (s) => UI.norm((s.first || '') + ' ' + (s.last || '')).split(/[^a-z0-9]+/).filter(Boolean).sort().join(' ');
+/* Kiekvienam importuojamam žmogui: 'link' (esamas mokinys, bus pridėtas prie šio komiteto), 'in' (jau šiame komitete),
+   'new' (programoje nėra), 'amb' (keli mokiniai tuo pačiu vardu), 'partial' (nėra pavardės). Pirmiausia lyginama pagal el. paštą. */
+function planImport(items) {
+  const byEmail = new Map(), byName = new Map();
+  state.students.forEach((s) => {
+    const e = UI.norm(s.email || '').trim();
+    if (e) byEmail.set(e, s);
+    const k = nameKey(s);
+    if (k) { if (!byName.has(k)) byName.set(k, []); byName.get(k).push(s); }
+  });
+  const seen = new Set(), out = [];
+  items.forEach((it) => {
+    const k = nameKey(it);
+    if (seen.has(k)) return;
+    seen.add(k);
+    if (it.partial) { out.push({ it, st: 'partial' }); return; }
+    const ek = UI.norm(it.email || '').trim();
+    let m = ek ? byEmail.get(ek) : null;
+    if (!m) {
+      const c = byName.get(k) || [];
+      if (c.length > 1) { out.push({ it, st: 'amb' }); return; }
+      m = c[0];
+    }
+    if (m) out.push({ it, m, st: (m.classIds || []).includes(state.currentClassId) ? 'in' : 'link' });
+    else out.push({ it, st: 'new' });
+  });
+  return out;
+}
 
 /* ---------- rendering ---------- */
 const NAV = [['dashboard', 'Apžvalga', ICON.dash], ['attendance', 'Lankomumas', ICON.check], ['activities', 'Veiklos', ICON.cal], ['students', 'Mokiniai', ICON.users], ['allstudents', 'Visi mokiniai', ICON.users], ['classes', 'Komitetai', ICON.book], ['tools', 'Įrankiai', ICON.tools], ['reports', 'Ataskaitos', ICON.chart], ['data', 'Duomenys', ICON.db], ['logs', 'LOG', ICON.log], ['users', 'Vartotojai', ICON.users], ['roles', 'Rolės', ICON.shield]];
@@ -713,7 +761,7 @@ const importDlg = document.getElementById('importDialog');
 function openImport() {
   importDlg.innerHTML = `<div class="dlg">
     <div class="dlg-head"><h3>Importuoti mokinius</h3><button type="button" class="icon-btn" data-act="close-import" aria-label="Uždaryti">&times;</button></div>
-    <p class="muted" style="margin-top:0">Pridedama į <b>${esc(curClass().name)}</b>. Veikia su „Excel“, „Google Sheets“ ar bet kokiu mokinių sąrašo eksportu.</p>
+    <p class="muted" style="margin-top:0">Pridedama į <b>${esc(curClass().name)}</b>. Veikia su „Excel“, „Google Sheets“, „Google Groups“ narių eksportu (vardai paimami iš vardas.pavarde@… el. pašto) ar bet kokiu mokinių sąrašu. Esami mokiniai nedubliuojami – jie tiesiog pridedami prie šio komiteto.</p>
     <label class="drop" data-drop>
       <input type="file" id="importFile" accept=".csv,.tsv,.txt,text/csv,text/plain,text/tab-separated-values" hidden>
       ${ICON.upload}<b>Nuvilkite failą čia arba spustelėkite ir pasirinkite</b><span>.csv, .tsv arba .txt</span>
@@ -721,7 +769,7 @@ function openImport() {
     <div class="divider">arba įklijuokite</div>
     <textarea id="importText" rows="5" placeholder="Įklijuokite eilutes iš skaičiuoklės arba po vieną vardą eilutėje:&#10;Ada Lovelace&#10;Alan Turing&#10;&#10;Arba su stulpeliais:&#10;Vardas, Pavardė, El. paštas, Tėvų el. paštas, Klasė"></textarea>
     <div id="importPreview"></div>
-    <label class="check"><input type="checkbox" id="importSkip" checked> Praleisti mokinius, kurie jau yra šiame komitete</label>
+    <label class="check"><input type="checkbox" id="importCreate" checked> Sukurti naujus mokinius, kurių dar nėra programoje (esami tik pridedami prie komiteto)</label>
     <p class="muted" style="font-size:.8rem;margin:0">Patarimas: antraštės eilutė (Vardas, Pavardė, El. paštas, Tėvų el. paštas, Klasė) aptinkama automatiškai. Tinka ir vienas vardų stulpelis.</p>
     <div class="dlg-actions">
       <button type="button" class="btn small" data-act="template">Atsisiųsti šabloną</button><span class="spacer"></span>
@@ -730,23 +778,42 @@ function openImport() {
     </div></div>`;
   importDlg.showModal();
 }
+const IMP_LABEL = {
+  link: ['Esamas – bus pridėtas į komitetą', 'ok'],
+  new: ['Naujas mokinys', 'ok'],
+  in: ['Jau šiame komitete', 'muted'],
+  amb: ['Keli mokiniai tuo pačiu vardu – praleista', 'warn'],
+  partial: ['Nėra pavardės – praleista', 'warn'],
+  skipnew: ['Programoje nerastas – praleista', 'muted'],
+};
 function updateImportPreview() {
   const text = document.getElementById('importText').value;
-  const skip = document.getElementById('importSkip').checked;
+  const create = document.getElementById('importCreate').checked;
   const items = parseImport(text);
-  const have = new Set(classStudents().map(keyOf));
-  const fresh = skip ? items.filter((x) => !have.has(keyOf(x))) : items;
-  const dupes = items.length - fresh.length;
+  const plan = planImport(items);
+  const cnt = (st) => plan.filter((p) => p.st === st).length;
+  const link = cnt('link'), fresh = create ? cnt('new') : 0, todo = link + fresh;
   const box = document.getElementById('importPreview');
   const go = document.getElementById('importGo');
-  go.disabled = !fresh.length;
-  go.textContent = fresh.length ? `Importuoti: ${fresh.length}` : 'Importuoti';
+  go.disabled = !todo;
+  go.textContent = todo ? `Importuoti: ${todo}` : 'Importuoti';
   if (!text.trim()) { box.innerHTML = ''; return; }
-  if (!items.length) { box.innerHTML = '<div class="preview"><div class="ph">Tekste mokinių nerasta.</div></div>'; return; }
-  box.innerHTML = `<div class="preview"><div class="ph">Rasta eilučių: ${items.length}${dupes ? ` · ${dupes} jau komitete (praleista)` : ''}</div>
-    <table><thead><tr><th>Vardas</th><th>Pavardė</th><th>El. paštas</th><th class="hide-sm">Tėvų el. paštas</th><th>Klasė</th></tr></thead><tbody>
-    ${items.slice(0, 5).map((x) => `<tr><td>${esc(x.first)}</td><td>${esc(x.last)}</td><td>${esc(x.email)}</td><td class="hide-sm">${esc(x.parentEmail)}</td><td>${esc(x.grade)}</td></tr>`).join('')}
-    ${items.length > 5 ? `<tr><td colspan="5" class="muted">…ir dar ${items.length - 5}</td></tr>` : ''}</tbody></table></div>`;
+  if (!plan.length) { box.innerHTML = '<div class="preview"><div class="ph">Tekste mokinių nerasta.</div></div>'; return; }
+  const bits = [`Rasta: ${plan.length}`, `esamų, bus pridėta: ${link}`, `naujų: ${fresh}`];
+  if (cnt('in')) bits.push(`jau komitete: ${cnt('in')}`);
+  if (!create && cnt('new')) bits.push(`nerasta (praleista): ${cnt('new')}`);
+  if (cnt('amb')) bits.push(`dviprasmiška: ${cnt('amb')}`);
+  if (cnt('partial')) bits.push(`be pavardės: ${cnt('partial')}`);
+  const rows = plan.map((p) => {
+    const key = p.st === 'new' && !create ? 'skipnew' : p.st;
+    const [lbl, cls] = IMP_LABEL[key];
+    const nm = p.m ? displayName(p.m) : ((p.it.first || '') + ' ' + (p.it.last || '')).trim();
+    return `<tr><td>${esc(nm)}</td><td class="hide-sm">${esc(p.it.email)}</td><td class="${cls === 'warn' ? '' : 'muted'}">${cls === 'warn' ? '⚠ ' : ''}${esc(lbl)}</td></tr>`;
+  }).join('');
+  const note = fresh && plan.some((p) => p.st === 'new' && p.it.email && !p.it.grade)
+    ? '<div class="ph muted" style="font-weight:400">Naujų mokinių vardai paimti iš el. pašto, todėl be lietuviškų raidžių – prireikus pataisykite kortelėje.</div>' : '';
+  box.innerHTML = `<div class="preview"><div class="ph">${bits.join(' · ')}</div>
+    <div style="max-height:260px;overflow:auto"><table><thead><tr><th>Mokinys</th><th class="hide-sm">El. paštas</th><th>Veiksmas</th></tr></thead><tbody>${rows}</tbody></table></div>${note}</div>`;
 }
 function loadImportFile(file) {
   if (!file) return;
@@ -756,22 +823,28 @@ function loadImportFile(file) {
   });
 }
 function doImport() {
-  const skip = document.getElementById('importSkip').checked;
-  let items = parseImport(document.getElementById('importText').value);
-  if (skip) {
-    const have = new Set(classStudents().map(keyOf));
-    items = items.filter((x) => {
-      const k = keyOf(x);
-      if (have.has(k)) return false;
-      have.add(k); return true;
-    });
-  }
-  if (!items.length) return;
-  addStudents(items);
+  const create = document.getElementById('importCreate').checked;
+  const plan = planImport(parseImport(document.getElementById('importText').value));
+  const cid = state.currentClassId;
+  let linked = 0;
+  const fresh = [];
+  plan.forEach((p) => {
+    if (p.st === 'link') {
+      p.m.classIds = (p.m.classIds || []).concat(cid);
+      if (!p.m.email && p.it.email) p.m.email = p.it.email;
+      linked++;
+    } else if (p.st === 'new' && create) {
+      fresh.push({ first: p.it.first, last: p.it.last, email: p.it.email, parentEmail: p.it.parentEmail, grade: p.it.grade });
+    }
+  });
+  if (!linked && !fresh.length) return;
+  fresh.forEach((it) => state.students.push(Object.assign({ id: uid(), classIds: [cid], first: '', last: '', email: '', parentEmail: '', notes: '', grade: '' }, it)));
+  Sync.tag(`Importas į komitetą „${curClass().name}“`);
+  save();
   importDlg.close();
   view = 'students';
   render();
-  toast(`Importuota mokinių: ${items.length}`);
+  toast(`Pridėta esamų: ${linked} · sukurta naujų: ${fresh.length}`);
 }
 
 /* ---------- mokinio kortelė ---------- */
@@ -936,7 +1009,7 @@ document.addEventListener('change', (e) => {
   else if (t.id === 'repFrom') { repFrom = t.value || repFrom; render(); }
   else if (t.id === 'repTo') { repTo = t.value || repTo; render(); }
   else if (t.id === 'importFile') loadImportFile(t.files && t.files[0]);
-  else if (t.id === 'importSkip') updateImportPreview();
+  else if (t.id === 'importCreate') updateImportPreview();
   else if (t.dataset && t.dataset.note) { if (Auth.can('attendance.mark')) setRec(state.currentClassId, attDate, t.dataset.note, { n: t.value.trim() }); }
   else if (t.id === 'jsonFile' && t.files[0] && Auth.can('data.restore')) {
     t.files[0].text().then(async (text) => {
