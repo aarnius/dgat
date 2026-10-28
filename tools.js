@@ -1,8 +1,9 @@
-/* Įrankiai: grupių skirstymas (su išsaugojimu), atsitiktinis mokinio traukimas, redaguojami sąrašai spausdinimui (su šablonais), rizikos sąrašas, dublikatų paieška ir sujungimas.
+/* Įrankiai: grupių skirstymas (su išsaugojimu), atsitiktinis mokinio traukimas, redaguojami sąrašai spausdinimui (su šablonais), rizikos sąrašas,
+   laiškų siuntimas mokiniams (su šablonais), dublikatų paieška ir sujungimas.
    Čia taip pat yra kalendoriaus kortelė (Tools.calendar), kurią rodo „Apžvalga“.
    Naudoja app.js / auth.js / activities.js funkcijas (state, classStudents, stats, Acts, api, head, esc, toast...). */
 const Tools = (() => {
-  const TABS = [['groups', 'Grupių skirstymas'], ['draw', 'Atsitiktinis mokinys'], ['lists', 'Sąrašai spausdinimui'], ['risk', 'Rizikos sąrašas'], ['dupes', 'Dublikatai']];
+  const TABS = [['groups', 'Grupių skirstymas'], ['draw', 'Atsitiktinis mokinys'], ['lists', 'Sąrašai spausdinimui'], ['risk', 'Rizikos sąrašas'], ['mail', 'Laiškai'], ['dupes', 'Dublikatai']];
   const IGN_KEY = 'attendance-dupe-ignore';
   const loadIgn = () => { try { return new Set(JSON.parse(localStorage.getItem(IGN_KEY) || '[]')); } catch (e) { return new Set(); } };
 
@@ -14,8 +15,10 @@ const Tools = (() => {
   const R = { scope: 'com', from: '', to: '', thr: 80, minDays: 3, streak: 3, acts: true };
   const X = { fuzzy: false, ignore: loadIgn() };
   const C = { m: '', mode: 'com' };
-  const OBJ = { S, G, D, L, R, X, C };
+  const M = { onlyRisk: false, to: 'student', tplId: '', subject: '', body: '', test: '', busy: false, status: '', bad: false };
+  const OBJ = { S, G, D, L, R, X, C, M };
   let saved = null, savedSt = 'idle', savedErr = '', tpls = [];
+  let mailTpls = null, mailTplSt = 'idle', mailFirst = null;
 
   const cid = () => state.currentClassId;
   const acts = () => (Acts.activitiesOf ? Acts.activitiesOf(cid()) : []);
@@ -215,33 +218,39 @@ const Tools = (() => {
   }
 
   /* ---------- rizikos sąrašas ---------- */
+  /* Vieno mokinio lankomumo suvestinė (naudoja rizikos sąrašas ir laiškų kintamieji). null – mokinys nepriklauso nurodytiems komitetams. */
+  function calcRow(s, ids, actOpts, from, to, useActs) {
+    const mine = (s.classIds || []).filter((c) => ids.includes(c));
+    if (!mine.length) return null;
+    const t = { P: 0, A: 0, L: 0, E: 0 }, seq = [];
+    mine.forEach((c) => {
+      const x = stats(c, s.id, from, to);
+      t.P += x.P; t.A += x.A; t.L += x.L; t.E += x.E;
+      const recs = state.records[c] || {};
+      for (const d in recs) { if ((from && d < from) || (to && d > to)) continue; const r = recs[d][s.id]; if (r && r.s) seq.push([d, r.s]); }
+    });
+    if (useActs) {
+      const x = Acts.totals(s.id, actOpts); t.P += x.P; t.A += x.A; t.L += x.L; t.E += x.E;
+      Acts.marks(s.id, actOpts).forEach((m) => { if (m.s) seq.push([m.d, m.s]); }); /* veiklų užsiėmimai įskaičiuojami į „iš eilės“ ir „paskutinis praleidimas“ */
+    }
+    seq.sort((a, b) => a[0].localeCompare(b[0]));
+    let streak = 0, lastAbs = '';
+    for (let i = seq.length - 1; i >= 0; i--) { if (seq[i][1] === 'A') streak++; else if (seq[i][1] === 'E') continue; else break; }
+    seq.forEach(([d, st]) => { if (st === 'A') lastAbs = d; });
+    const den = t.P + t.L + t.A, rate = den ? Math.round(((t.P + t.L) / den) * 100) : null;
+    return { t, rate, den, streak, lastAbs, coms: mine.map(comName).sort((a, b) => a.localeCompare(b, 'lt', { numeric: true })).join(', ') };
+  }
   function riskRows() {
     const ids = R.scope === 'all' ? state.classes.map((c) => c.id) : [cid()];
     const from = R.from || undefined, to = R.to || undefined;
     const useActs = R.acts && Auth.can('activities.view');
+    const ao = R.scope === 'all' ? { from, to } : { cid: cid(), from, to };
     const out = [];
     state.students.forEach((s) => {
-      const mine = (s.classIds || []).filter((c) => ids.includes(c));
-      if (!mine.length) return;
-      const t = { P: 0, A: 0, L: 0, E: 0 }, seq = [];
-      mine.forEach((c) => {
-        const x = stats(c, s.id, from, to);
-        t.P += x.P; t.A += x.A; t.L += x.L; t.E += x.E;
-        const recs = state.records[c] || {};
-        for (const d in recs) { if ((from && d < from) || (to && d > to)) continue; const r = recs[d][s.id]; if (r && r.s) seq.push([d, r.s]); }
-      });
-      if (useActs) {
-        const o = R.scope === 'all' ? { from, to } : { cid: cid(), from, to };
-        const x = Acts.totals(s.id, o); t.P += x.P; t.A += x.A; t.L += x.L; t.E += x.E;
-        Acts.marks(s.id, o).forEach((m) => { if (m.s) seq.push([m.d, m.s]); }); /* veiklų užsiėmimai įskaičiuojami į „iš eilės“ ir „paskutinis praleidimas“ */
-      }
-      seq.sort((a, b) => a[0].localeCompare(b[0]));
-      let streak = 0, lastAbs = '';
-      for (let i = seq.length - 1; i >= 0; i--) { if (seq[i][1] === 'A') streak++; else if (seq[i][1] === 'E') continue; else break; }
-      seq.forEach(([d, st]) => { if (st === 'A') lastAbs = d; });
-      const den = t.P + t.L + t.A, rate = den ? Math.round(((t.P + t.L) / den) * 100) : null;
-      const low = rate != null && rate < R.thr && den >= R.minDays, run = R.streak > 0 && streak >= R.streak;
-      if (low || run) out.push({ s, t, rate, den, streak, lastAbs, coms: mine.map(comName).sort((a, b) => a.localeCompare(b, 'lt', { numeric: true })).join(', ') });
+      const r = calcRow(s, ids, ao, from, to, useActs);
+      if (!r) return;
+      const low = r.rate != null && r.rate < R.thr && r.den >= R.minDays, run = R.streak > 0 && r.streak >= R.streak;
+      if (low || run) out.push({ s, ...r });
     });
     return out.sort((a, b) => (a.rate == null ? 101 : a.rate) - (b.rate == null ? 101 : b.rate) || b.streak - a.streak);
   }
@@ -255,12 +264,144 @@ const Tools = (() => {
       <label>Bent pažymėtų dienų<input type="number" min="1" max="100" data-tool="R.minDays" value="${R.minDays}"></label>
       <label>Praleista iš eilės (0 – nežiūrėti)<input type="number" min="0" max="30" data-tool="R.streak" value="${R.streak}"></label>
       ${Auth.can('activities.view') ? `<label class="check"><input type="checkbox" data-tool="R.acts" ${R.acts ? 'checked' : ''}> Įskaičiuoti veiklų lankomumą</label>` : ''}
-      <button class="btn small" data-act="tool-print" data-t="risk">${ICON.print} Spausdinti</button><button class="btn small" data-act="tool-csv" data-t="risk">CSV</button></div></div>
+      <button class="btn small" data-act="tool-print" data-t="risk">${ICON.print} Spausdinti</button><button class="btn small" data-act="tool-csv" data-t="risk">CSV</button>${Auth.can('tools.save') ? '<button class="btn small primary" data-act="tool-mail-risk">✉ Siųsti laišką</button>' : ''}</div></div>
       <div class="print-only print-title"><h2>Rizikos sąrašas – ${R.scope === 'all' ? 'visi komitetai' : esc(comName(cid()))}</h2><p>${esc(per)} · lankomumas žemiau ${R.thr}%${R.streak ? ` arba ${R.streak}+ praleidimai iš eilės` : ''}</p></div>
       <div class="card"><h2>Reikia dėmesio: ${rows.length}</h2><p class="sub no-print">Rodiklis = (dalyvavo + vėlavo) ÷ (dalyvavo + vėlavo + nedalyvavo). „Iš eilės“ skaičiuojama pagal komiteto dienų žymas; pateisintos dienos serijos nenutraukia.</p>
       ${rows.length ? `${UI.filterBox({ fk: 'risk', scope: '#riskTbl', placeholder: 'Ieškoti mokinio sąraše…' })}<div class="table-wrap"><table id="riskTbl"><thead><tr><th>Mokinys</th><th class="hide-sm">Komitetai</th><th class="num">Nedalyvavo</th><th class="num">Vėlavo</th><th class="num">Iš eilės</th><th class="hide-sm">Paskutinis praleidimas</th><th class="num">Rodiklis</th></tr></thead><tbody>${rows.map((x) =>
         `<tr><td><div class="who">${avatar(x.s)}<div><b class="name-link" data-act="student-card" data-sid="${x.s.id}" role="button" tabindex="0">${esc(displayName(x.s))}</b>${x.s.grade ? `<small>${esc(x.s.grade)} kl.</small>` : ''}</div></div></td><td class="hide-sm">${esc(x.coms)}</td><td class="num">${x.t.A}</td><td class="num">${x.t.L}</td><td class="num">${x.streak}</td><td class="hide-sm">${esc(x.lastAbs || '–')}</td><td class="num">${rateBadge(x.rate)}</td></tr>`).join('')}</tbody></table></div>`
         : '<p class="muted">Pagal šiuos kriterijus nieko nerasta. Puiku!</p>'}</div>`;
+  }
+
+  /* ---------- laiškai mokiniams: gavėjai, turinys, šablonai ---------- */
+  const EMAIL_RE = /^[^\s@<>()",;:]+@[^\s@<>()",;:]+\.[^\s@<>()",;:]+$/;
+  const MAIL_CHUNK = 15; /* kiek laiškų siunčiama per vieną užklausą (Vercel funkcijos laiko riba) */
+  const MAIL_PRESETS = [
+    { id: 'b:risk', name: 'Dėl lankomumo', subject: 'Dėl lankomumo', body: 'Sveiki, {vardas},\n\npastebėjome, kad Jūsų lankomumas komitete „{komitetas}“ šiuo metu yra {rodiklis} (nedalyvavote {nedalyvavo} kartus). Prašome susisiekti su manimi ir aptarti, kuo galime padėti.\n\nPagarbiai,\n{mano_vardas}' },
+    { id: 'b:remind', name: 'Priminimas apie susirinkimą', subject: 'Priminimas: {komitetas} susirinkimas', body: 'Sveiki, {vardas},\n\npriminame, kad netrukus vyks komiteto „{komitetas}“ susirinkimas.\nData ir laikas: ____________\nVieta: ____________\n\nLaukiame Jūsų!\n{mano_vardas}' },
+    { id: 'b:thanks', name: 'Padėka už dalyvavimą', subject: 'Ačiū už dalyvavimą', body: 'Sveiki, {vardas},\n\ndėkojame už aktyvų dalyvavimą komiteto „{komitetas}“ veikloje. Jūsų indėlis labai vertinamas.\n\nPagarbiai,\n{mano_vardas}' },
+    { id: 'b:blank', name: 'Tuščias laiškas', subject: '', body: 'Sveiki, {vardas},\n\n\n\nPagarbiai,\n{mano_vardas}' },
+  ];
+  const MAIL_VARS = [['vardas', 'vardas'], ['pavarde', 'pavardė'], ['klase', 'klasė'], ['komitetas', 'komitetas'], ['rodiklis', 'rodiklis'], ['nedalyvavo', 'nedalyvavo'], ['velavo', 'vėlavo'], ['ireiles', 'iš eilės'], ['mano_vardas', 'mano vardas']];
+  const myName = () => { try { return (Auth.user() || {}).name || ''; } catch (e) { return ''; } };
+  const fillT = (tpl, vars) => String(tpl).replace(/\{(\w+)\}/g, (m, k) => (Object.prototype.hasOwnProperty.call(vars, k) ? vars[k] : m));
+  const allPresets = () => MAIL_PRESETS.concat(mailTpls || []);
+  const curPreset = () => allPresets().find((p) => p.id === M.tplId);
+  const isSavedPreset = (p) => !!p && !String(p.id).startsWith('b:');
+
+  function loadMailTpls() {
+    if (mailTplSt === 'loading') return;
+    mailTplSt = 'loading';
+    api('/api/send-email', { action: 'tpl-list' }).then((r) => { mailTpls = r.templates || []; }).catch(() => { mailTpls = []; })
+      .finally(() => { mailTplSt = 'ready'; if (view === 'tools' && tab === 'mail') render(); });
+  }
+  function applyMailTpl() { const p = curPreset(); if (p) { M.subject = p.subject; M.body = p.body; } }
+  function mailVars(s) {
+    const from = R.from || undefined, to = R.to || undefined;
+    const r = calcRow(s, [cid()], { cid: cid(), from, to }, from, to, R.acts && Auth.can('activities.view'));
+    return {
+      rodiklis: r && r.rate != null ? r.rate + '%' : '–', nedalyvavo: String(r ? r.t.A : 0), velavo: String(r ? r.t.L : 0), ireiles: String(r ? r.streak : 0),
+      komitetas: comName(cid()), klase: s.grade || '',
+    };
+  }
+  function mailRecipients() {
+    let list = pool();
+    if (M.onlyRisk) { const ids = new Set(riskRows().map((x) => x.s.id)); list = list.filter((s) => ids.has(s.id)); }
+    return list.map((s) => ({ s, email: String((M.to === 'parent' ? s.parentEmail : s.email) || '').trim(), vars: mailVars(s) }));
+  }
+  const mailOk = (r) => EMAIL_RE.test(r.email);
+  function mailPreviewHtml() {
+    const f = mailFirst;
+    if (!f) return '<span class="muted">Nėra gavėjų – pasirinkite mokinius.</span>';
+    const v = { vardas: f.s.first, pavarde: f.s.last, ...f.vars, mano_vardas: myName() };
+    return `<div class="muted" style="font-size:.8rem;margin-bottom:4px">Peržiūra pirmam gavėjui (${esc(displayName(f.s))}${f.email ? ' · ' + esc(f.email) : ''})</div><b>${esc(fillT(M.subject, v) || '(be temos)')}</b><div style="white-space:pre-wrap;margin-top:6px">${esc(fillT(M.body, v))}</div>`;
+  }
+  function mailPreview() { const p = document.getElementById('mPrev'); if (p) p.innerHTML = mailPreviewHtml(); }
+  function mailStatus(html, bad) {
+    M.status = html; M.bad = !!bad;
+    const s = document.getElementById('mStatus');
+    if (s) { s.innerHTML = html; s.style.color = bad ? 'var(--danger, #c0392b)' : ''; }
+  }
+  function renderMail() {
+    if (mailTpls === null && mailTplSt === 'idle') loadMailTpls();
+    const recs = mailRecipients(), ok = recs.filter(mailOk), bad = recs.filter((r) => !mailOk(r));
+    mailFirst = ok[0] || recs[0] || null;
+    const can = Auth.can('tools.save'), cur = curPreset(), parent = M.to === 'parent';
+    const opt = (p) => `<option value="${esc(p.id)}" ${p.id === M.tplId ? 'selected' : ''}>${esc(p.name)}</option>`;
+    const savedList = (mailTpls || []);
+    return srcBox() + `<div class="card no-print"><h2>Gavėjai</h2><div class="tool-opts">
+      <label>Siųsti į<select data-tool="M.to"><option value="student" ${parent ? '' : 'selected'}>Mokinio el. paštą</option><option value="parent" ${parent ? 'selected' : ''}>Tėvų el. paštą</option></select></label>
+      <label class="check"><input type="checkbox" data-tool="M.onlyRisk" ${M.onlyRisk ? 'checked' : ''}> Tik rizikos sąrašo mokiniai (kriterijai – skiltyje „Rizikos sąrašas“)</label></div>
+      <p style="margin:10px 0 0"><b>Gavėjų: ${ok.length}</b>${bad.length ? ` <span class="muted">· be ${parent ? 'tėvų ' : ''}el. pašto: ${bad.length}</span>` : ''}</p>
+      ${bad.length ? `<details style="margin-top:6px"><summary class="muted">Kam laiškas nebus išsiųstas (${bad.length})</summary><p class="muted" style="margin:6px 0 0">${bad.map((r) => esc(displayName(r.s))).join(', ')}</p></details>` : ''}
+      <p class="sub" style="margin:8px 0 0">Gavėjus pasirinkite aukščiau („Šaltinis“, klasė, mokinių sąrašas). Kiekvienam išsiunčiamas atskiras laiškas – vieni gavėjai kitų nemato.</p></div>
+      <div class="card no-print"><h2>Laiško turinys</h2>
+      <div class="tool-opts"><label>Šablonas<select data-tool="M.tplId"><option value="">– pasirinkite šabloną –</option><optgroup label="Standartiniai">${MAIL_PRESETS.map(opt).join('')}</optgroup>${savedList.length ? `<optgroup label="Išsaugoti">${savedList.map(opt).join('')}</optgroup>` : ''}</select></label>
+      ${can ? `<button class="btn small" data-act="tool-mtpl-new">${ICON.plus} Išsaugoti kaip naują šabloną</button>${isSavedPreset(cur) ? '<button class="btn small primary" data-act="tool-mtpl-update">Atnaujinti šabloną</button><button class="btn small" data-act="tool-mtpl-rename">Pervadinti</button><button class="btn small danger" data-act="tool-mtpl-del">Ištrinti</button>' : ''}` : ''}</div>
+      <label class="ui-lbl" style="display:block;margin-top:12px">Tema<input class="ui-input" data-mail="subject" maxlength="150" value="${esc(M.subject)}" placeholder="Laiško tema" autocomplete="off" style="width:100%"></label>
+      <label class="ui-lbl" style="display:block;margin-top:10px">Laiško tekstas<textarea id="mBody" data-mail="body" rows="10" maxlength="5000" style="width:100%" placeholder="Laiško tekstas">${esc(M.body)}</textarea></label>
+      <div class="actions" style="margin-top:8px;flex-wrap:wrap"><span class="muted" style="font-size:.85rem">Įterpti:</span>${MAIL_VARS.map(([k, l]) => `<button type="button" class="btn small" data-act="tool-mail-ins" data-v="${k}">${esc(l)}</button>`).join('')}</div>
+      <p class="sub" style="margin:8px 0 0">Kiekvienam gavėjui šie laukai užpildomi automatiškai (rodiklis, nedalyvavo ir kt. – pagal šio komiteto lankomumą).</p>
+      <div id="mPrev" class="preview" style="margin-top:12px;padding:12px">${mailPreviewHtml()}</div></div>
+      <div class="card no-print"><div class="tool-opts"><label>Bandomasis laiškas į<input type="email" data-mail="test" value="${esc(M.test)}" placeholder="jūsų el. paštas" autocomplete="off"></label>
+      <button class="btn small" data-act="tool-mail-test" ${can ? '' : 'disabled'}>Išsiųsti bandomąjį</button>
+      <span class="spacer"></span><button class="btn primary" id="mSend" data-act="tool-mail-send" ${can && ok.length ? '' : 'disabled'}>✉ Siųsti: ${ok.length}</button></div>
+      <div id="mStatus" class="muted" style="margin-top:10px;min-height:1.2em${M.bad ? ';color:var(--danger, #c0392b)' : ''}">${M.status}</div>
+      ${can ? '' : '<p class="muted" style="margin:8px 0 0">Laiškams siųsti reikia leidimo „tools.save“.</p>'}</div>`;
+  }
+  function mailInsert(key) {
+    const ta = document.getElementById('mBody');
+    if (!ta) return;
+    const tok = '{' + key + '}', a = ta.selectionStart == null ? ta.value.length : ta.selectionStart, b = ta.selectionEnd == null ? a : ta.selectionEnd;
+    ta.value = ta.value.slice(0, a) + tok + ta.value.slice(b);
+    ta.focus(); ta.selectionStart = ta.selectionEnd = a + tok.length;
+    M.body = ta.value; mailPreview();
+  }
+  async function mailSaveTpl(id, name) {
+    try {
+      const r = await api('/api/send-email', { action: 'tpl-save', id, name, subject: M.subject.trim(), body: M.body });
+      mailTpls = r.templates; M.tplId = r.id; toast(id ? 'Šablonas išsaugotas' : 'Šablonas sukurtas');
+    } catch (e) { toast(e.message); }
+    render();
+  }
+  function mailPayload(items, extra) {
+    const me = { mano_vardas: myName() };
+    return { to: M.to, subject: fillT(M.subject.trim(), me), message: fillT(M.body.trim(), me), items: items.map((r) => ({ id: r.s.id, vars: r.vars })), ...extra };
+  }
+  async function mailTest() {
+    if (M.busy) return;
+    const to = M.test.trim(), first = mailFirst;
+    if (!M.subject.trim() || !M.body.trim()) { mailStatus('Įrašykite laiško temą ir tekstą.', true); return; }
+    if (!EMAIL_RE.test(to)) { mailStatus('Įrašykite savo el. paštą bandomajam laiškui.', true); return; }
+    if (!first) { mailStatus('Nėra gavėjų – bandomajam laiškui reikia bent vieno mokinio duomenų.', true); return; }
+    M.busy = true; mailStatus('Siunčiamas bandomasis laiškas…');
+    try { await api('/api/send-email', mailPayload([first], { testTo: to })); mailStatus(`Bandomasis laiškas išsiųstas į ${esc(to)} (pavyzdys: ${esc(displayName(first.s))}).`); }
+    catch (e) { mailStatus('Klaida: ' + esc(e.message), true); }
+    M.busy = false;
+  }
+  async function mailSend() {
+    if (M.busy) return;
+    const recs = mailRecipients().filter(mailOk);
+    if (!recs.length) { toast('Nėra gavėjų su el. paštu'); return; }
+    if (!M.subject.trim() || !M.body.trim()) { mailStatus('Įrašykite laiško temą ir tekstą.', true); return; }
+    const ok = await UI.confirm(`Išsiųsti laišką ${recs.length} gavėjams (${M.to === 'parent' ? 'tėvams' : 'mokiniams'})?\n\nTema: ${M.subject.trim()}\n\nŠio veiksmo atšaukti negalima.`, { title: 'Patvirtinkite siuntimą', okText: 'Siųsti' });
+    if (!ok) return;
+    M.busy = true;
+    const btn = document.getElementById('mSend'); if (btn) btn.disabled = true;
+    const sent = [], failed = [], skipped = [];
+    let err = null;
+    try {
+      for (let i = 0; i < recs.length; i += MAIL_CHUNK) {
+        mailStatus(`Siunčiama… ${sent.length + failed.length} iš ${recs.length}`);
+        const r = await api('/api/send-email', mailPayload(recs.slice(i, i + MAIL_CHUNK)));
+        sent.push(...r.sent); failed.push(...r.failed); skipped.push(...r.skipped);
+      }
+    } catch (e) { err = e; }
+    M.busy = false;
+    const b2 = document.getElementById('mSend'); if (b2) b2.disabled = false;
+    const bad = failed.map((f) => ({ name: f.name, error: f.error })).concat(skipped.map((s) => ({ name: s.name, error: s.reason })));
+    mailStatus(`<b>Išsiųsta: ${sent.length}</b>${bad.length ? ` · nepavyko / praleista: ${bad.length}` : ''}${err ? `<br>Siuntimas nutrauktas: ${esc(err.message)}. Likusiems laiškai neišsiųsti.` : ''}` +
+      (bad.length ? `<br><small>${bad.slice(0, 15).map((x) => esc(x.name) + ' – ' + esc(x.error)).join('<br>')}${bad.length > 15 ? '<br>…' : ''}</small>` : ''), !!err || (!sent.length && !!bad.length));
+    toast(`Išsiųsta laiškų: ${sent.length}${bad.length ? ` · nepavyko: ${bad.length}` : ''}`);
   }
 
   /* ---------- kalendorius (rodomas „Apžvalgoje“) ---------- */
@@ -375,9 +516,10 @@ const Tools = (() => {
 
   /* ---------- puslapis ---------- */
   function renderPage() {
-    const body = { groups: renderGroups, draw: renderDraw, lists: renderLists, risk: renderRisk, dupes: renderDupes }[tab]();
+    const tabs = TABS.filter(([k]) => k !== 'mail' || Auth.can('tools.save') || Auth.can('tools.view'));
+    const body = { groups: renderGroups, draw: renderDraw, lists: renderLists, risk: renderRisk, mail: renderMail, dupes: renderDupes }[tab]();
     app.innerHTML = `<div class="no-print">${head('Įrankiai', esc(curClass().name))}</div>` +
-      `<div class="tool-tabs no-print">${TABS.map(([k, l]) => `<button class="btn ${tab === k ? 'primary' : ''}" data-act="tool-tab" data-t="${k}">${l}</button>`).join('')}</div>` + body;
+      `<div class="tool-tabs no-print">${tabs.map(([k, l]) => `<button class="btn ${tab === k ? 'primary' : ''}" data-act="tool-tab" data-t="${k}">${l}</button>`).join('')}</div>` + body;
   }
 
   async function saveGroups() {
@@ -458,6 +600,29 @@ const Tools = (() => {
       case 'tool-merge': merge(el.closest('.dup')); return true;
       case 'tool-ignore': X.ignore.add(el.dataset.ck); try { localStorage.setItem(IGN_KEY, JSON.stringify([...X.ignore])); } catch (e) { /* ignore */ } render(); return true;
       case 'tool-unignore': X.ignore.clear(); try { localStorage.removeItem(IGN_KEY); } catch (e) { /* ignore */ } render(); return true;
+      /* ----- laiškai ----- */
+      case 'tool-mail-risk': tab = 'mail'; M.onlyRisk = true; render(); window.scrollTo(0, 0); return true;
+      case 'tool-mail-ins': mailInsert(el.dataset.v); return true;
+      case 'tool-mail-test': mailTest(); return true;
+      case 'tool-mail-send': mailSend(); return true;
+      case 'tool-mtpl-new':
+        UI.prompt('Naujas laiško šablonas', (curPreset() && !isSavedPreset(curPreset()) ? curPreset().name : M.subject.trim()), { label: 'Šablono pavadinimas', okText: 'Išsaugoti', max: 120 }).then((name) => { if (name) mailSaveTpl('', name); });
+        return true;
+      case 'tool-mtpl-update': { const p = curPreset(); if (isSavedPreset(p)) mailSaveTpl(p.id, p.name); return true; }
+      case 'tool-mtpl-rename': {
+        const p = curPreset();
+        if (isSavedPreset(p)) UI.prompt('Pervadinti šabloną', p.name, { label: 'Naujas pavadinimas', okText: 'Išsaugoti', max: 120 }).then((name) => { if (name) mailSaveTpl(p.id, name); });
+        return true;
+      }
+      case 'tool-mtpl-del': {
+        const p = curPreset();
+        if (isSavedPreset(p)) UI.confirm(`Ištrinti laiško šabloną „${p.name}“?`, { title: 'Ištrinti šabloną', okText: 'Ištrinti', danger: true }).then(async (ok) => {
+          if (!ok) return;
+          try { mailTpls = (await api('/api/send-email', { action: 'tpl-delete', id: p.id })).templates; M.tplId = ''; toast('Šablonas ištrintas'); } catch (e) { toast(e.message); }
+          render();
+        });
+        return true;
+      }
     }
     return false;
   }
@@ -478,11 +643,22 @@ const Tools = (() => {
     if (!OBJ[o]) return;
     OBJ[o][k] = t.type === 'checkbox' ? t.checked : t.type === 'number' ? Number(t.value) : t.value;
     if (o === 'L' && k === 'tpl') applyTpl();
+    if (o === 'M' && k === 'tplId') applyMailTpl();
     render();
+  });
+  /* Laiško tema, tekstas ir bandomasis adresas saugomi rašant, be perpiešimo (kad nešokinėtų žymeklis ir nepasimestų paspaudimas ant mygtuko). */
+  document.addEventListener('input', (ev) => {
+    const t = ev.target;
+    if (!t.dataset || !t.dataset.mail) return;
+    M[t.dataset.mail] = t.value;
+    if (t.dataset.mail === 'subject' || t.dataset.mail === 'body') mailPreview();
   });
   document.addEventListener('toggle', (ev) => { if (ev.target.classList && ev.target.classList.contains('tool-pick')) S.pickOpen = ev.target.open; }, true);
 
-  function reset(hard) { saved = null; savedSt = 'idle'; savedErr = ''; tpls = []; if (hard) { G.res = null; D.drawn = []; D.hist = []; D.last = []; S.excl.clear(); S.src = 'all'; S.grade = ''; L.tpl = ''; } }
+  function reset(hard) {
+    saved = null; savedSt = 'idle'; savedErr = ''; tpls = []; mailTpls = null; mailTplSt = 'idle';
+    if (hard) { G.res = null; D.drawn = []; D.hist = []; D.last = []; S.excl.clear(); S.src = 'all'; S.grade = ''; L.tpl = ''; M.tplId = ''; M.subject = ''; M.body = ''; M.status = ''; M.bad = false; M.onlyRisk = false; M.to = 'student'; }
+  }
 
   return { render: renderPage, act, reset, calendar: calendarCard };
 })();
