@@ -323,7 +323,7 @@ function planImport(items) {
       if (c.length > 1) { out.push({ it, st: 'amb' }); return; }
       m = c[0];
     }
-    if (m) out.push({ it, m, st: (m.classIds || []).includes(state.currentClassId) ? 'in' : 'link' });
+    if (m) out.push({ it, m, st: (m.classIds || []).includes(state.currentClassId) ? 'in' : 'link', fillMail: !String(m.email || '').trim() && !!String(it.email || '').trim() });
     else out.push({ it, st: 'new' });
   });
   return out;
@@ -798,6 +798,7 @@ const IMP_LABEL = {
   link: ['Esamas – bus pridėtas į komitetą', 'ok'],
   new: ['Naujas mokinys', 'ok'],
   in: ['Jau šiame komitete', 'muted'],
+  inmail: ['Jau komitete – bus įrašytas el. paštas', 'ok'],
   amb: ['Keli mokiniai tuo pačiu vardu – praleista', 'warn'],
   partial: ['Nėra pavardės – praleista', 'warn'],
   skipnew: ['Programoje nerastas – praleista', 'muted'],
@@ -808,7 +809,8 @@ function updateImportPreview() {
   const items = parseImport(text);
   const plan = planImport(items);
   const cnt = (st) => plan.filter((p) => p.st === st).length;
-  const link = cnt('link'), fresh = create ? cnt('new') : 0, todo = link + fresh;
+  const mails = plan.filter((p) => p.m && p.fillMail).length;
+  const link = cnt('link'), fresh = create ? cnt('new') : 0, todo = link + fresh + plan.filter((p) => p.st === 'in' && p.fillMail).length;
   const box = document.getElementById('importPreview');
   const go = document.getElementById('importGo');
   go.disabled = !todo;
@@ -816,12 +818,13 @@ function updateImportPreview() {
   if (!text.trim()) { box.innerHTML = ''; return; }
   if (!plan.length) { box.innerHTML = '<div class="preview"><div class="ph">Tekste mokinių nerasta.</div></div>'; return; }
   const bits = [`Rasta: ${plan.length}`, `esamų, bus pridėta: ${link}`, `naujų: ${fresh}`];
+  if (mails) bits.unshift(`el. paštas bus įrašytas: ${mails}`);
   if (cnt('in')) bits.push(`jau komitete: ${cnt('in')}`);
   if (!create && cnt('new')) bits.push(`nerasta (praleista): ${cnt('new')}`);
   if (cnt('amb')) bits.push(`dviprasmiška: ${cnt('amb')}`);
   if (cnt('partial')) bits.push(`be pavardės: ${cnt('partial')}`);
   const rows = plan.map((p) => {
-    const key = p.st === 'new' && !create ? 'skipnew' : p.st;
+    const key = p.st === 'new' && !create ? 'skipnew' : (p.st === 'in' && p.fillMail ? 'inmail' : p.st);
     const [lbl, cls] = IMP_LABEL[key];
     const nm = p.m ? displayName(p.m) : ((p.it.first || '') + ' ' + (p.it.last || '')).trim();
     return `<tr><td>${esc(nm)}</td><td class="hide-sm">${esc(p.it.email)}</td><td class="${cls === 'warn' ? '' : 'muted'}">${cls === 'warn' ? '⚠ ' : ''}${esc(lbl)}</td></tr>`;
@@ -842,25 +845,27 @@ function doImport() {
   const create = document.getElementById('importCreate').checked;
   const plan = planImport(parseImport(document.getElementById('importText').value));
   const cid = state.currentClassId;
-  let linked = 0;
+  let linked = 0, mailed = 0;
   const fresh = [];
   plan.forEach((p) => {
     if (p.st === 'link') {
       p.m.classIds = (p.m.classIds || []).concat(cid);
-      if (!p.m.email && p.it.email) p.m.email = p.it.email;
+      if (!p.m.email && p.it.email) { p.m.email = p.it.email; mailed++; }
       linked++;
+    } else if (p.st === 'in') {
+      if (p.fillMail) { p.m.email = p.it.email; mailed++; }
     } else if (p.st === 'new' && create) {
       fresh.push({ first: p.it.first, last: p.it.last, email: p.it.email, parentEmail: p.it.parentEmail, grade: p.it.grade });
     }
   });
-  if (!linked && !fresh.length) return;
+  if (!linked && !fresh.length && !mailed) return;
   fresh.forEach((it) => state.students.push(Object.assign({ id: uid(), classIds: [cid], first: '', last: '', email: '', parentEmail: '', notes: '', grade: '' }, it)));
   Sync.tag(`Importas į komitetą „${curClass().name}“`);
   save();
   importDlg.close();
   view = 'students';
   render();
-  toast(`Pridėta esamų: ${linked} · sukurta naujų: ${fresh.length}`);
+  toast(`Pridėta esamų: ${linked} · sukurta naujų: ${fresh.length} · įrašyta el. paštų: ${mailed}`);
 }
 
 /* ---------- mokinio kortelė ---------- */
