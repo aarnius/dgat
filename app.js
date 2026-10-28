@@ -275,9 +275,25 @@ function parseImport(text) {
     });
   } else if (rows[0].length === 1) {
     // one name per line: use the raw lines so "Last, First" isn't split into columns
-    items = text.split(/\r?\n/).map(parseName).filter(Boolean).map((n) => Object.assign({ email: '', parentEmail: '', grade: '' }, n));
+    items = text.split(/\r?\n/).map((line) => {
+      line = line.trim().replace(/^["']|["']$/g, '');
+      if (!line) return null;
+      if (/^[^\s@,;]+@[^\s@,;]+$/.test(line)) { // tik el. paštas: vardas ir pavardė paimami iš adreso
+        const n = nameFromEmail(line);
+        return { first: n.first, last: n.last, email: line, parentEmail: '', grade: '', partial: !n.last };
+      }
+      const n = parseName(line);
+      return n ? Object.assign({ email: '', parentEmail: '', grade: '' }, n) : null;
+    }).filter(Boolean);
   } else {
-    items = rows.map((r) => ({ first: (r[0] || '').trim(), last: (r[1] || '').trim(), email: (r[2] || '').trim(), parentEmail: (r[3] || '').trim(), grade: (r[4] || '').trim() }));
+    items = rows.map((r) => {
+      const c0 = (r[0] || '').trim();
+      if (/^[^\s@]+@[^\s@]+$/.test(c0)) { // pirmas stulpelis – el. paštas (be antraštės)
+        const n = nameFromEmail(c0);
+        return { first: n.first, last: n.last, email: c0, parentEmail: '', grade: (r[1] || '').trim(), partial: !n.last };
+      }
+      return { first: c0, last: (r[1] || '').trim(), email: (r[2] || '').trim(), parentEmail: (r[3] || '').trim(), grade: (r[4] || '').trim() };
+    });
   }
   return items.filter((x) => x.first || x.last);
 }
@@ -767,7 +783,7 @@ function openImport() {
       ${ICON.upload}<b>Nuvilkite failą čia arba spustelėkite ir pasirinkite</b><span>.csv, .tsv arba .txt</span>
     </label>
     <div class="divider">arba įklijuokite</div>
-    <textarea id="importText" rows="5" placeholder="Įklijuokite eilutes iš skaičiuoklės arba po vieną vardą eilutėje:&#10;Ada Lovelace&#10;Alan Turing&#10;&#10;Arba su stulpeliais:&#10;Vardas, Pavardė, El. paštas, Tėvų el. paštas, Klasė"></textarea>
+    <textarea id="importText" rows="5" placeholder="Įklijuokite eilutes iš skaičiuoklės, po vieną vardą arba el. paštą eilutėje:&#10;Ada Lovelace&#10;alan.turing@dgg.lt&#10;&#10;Arba su stulpeliais:&#10;Vardas, Pavardė, El. paštas, Tėvų el. paštas, Klasė"></textarea>
     <div id="importPreview"></div>
     <label class="check"><input type="checkbox" id="importCreate" checked> Sukurti naujus mokinius, kurių dar nėra programoje (esami tik pridedami prie komiteto)</label>
     <p class="muted" style="font-size:.8rem;margin:0">Patarimas: antraštės eilutė (Vardas, Pavardė, El. paštas, Tėvų el. paštas, Klasė) aptinkama automatiškai. Tinka ir vienas vardų stulpelis.</p>
