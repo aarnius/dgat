@@ -1,3 +1,5 @@
 {
+  "cleanUrls": true,
+  "trailingSlash": false,
   "crons": [{ "path": "/api/backup", "schedule": "0 2 * * *" }]
 }
