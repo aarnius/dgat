@@ -245,9 +245,12 @@ export default handler(async (req, res, body) => {
       const summary = changed.length === 1 ? lines[0] : `Veiklos „${s.aname}“ lankomumas ${s.d} – žymų: ${changed.length}`;
 
       const q = [];
-      if (ups.length) q.push(sql`INSERT INTO activity_records (session_id, student_id, s, n)
-        SELECT ${ssid}::text, t.sid, t.s, t.n FROM unnest(${ups.map((x) => x.sid)}::text[], ${ups.map((x) => x.s)}::text[], ${ups.map((x) => x.n)}::text[]) AS t(sid, s, n)
-        ON CONFLICT (session_id, student_id) DO UPDATE SET s = EXCLUDED.s, n = EXCLUDED.n`);
+      const byName = String(me.name || '').slice(0, 100);
+      if (ups.length) q.push(sql`INSERT INTO activity_records (session_id, student_id, s, n, by_name, marked_at)
+        SELECT ${ssid}::text, t.sid, t.s, t.n, ${byName}::text, now() FROM unnest(${ups.map((x) => x.sid)}::text[], ${ups.map((x) => x.s)}::text[], ${ups.map((x) => x.n)}::text[]) AS t(sid, s, n)
+        ON CONFLICT (session_id, student_id) DO UPDATE SET s = EXCLUDED.s, n = EXCLUDED.n,
+          by_name = CASE WHEN activity_records.s IS DISTINCT FROM EXCLUDED.s THEN EXCLUDED.by_name ELSE activity_records.by_name END,
+          marked_at = CASE WHEN activity_records.s IS DISTINCT FROM EXCLUDED.s THEN EXCLUDED.marked_at ELSE activity_records.marked_at END`);
       if (dels.length) q.push(sql`DELETE FROM activity_records WHERE session_id = ${ssid} AND student_id = ANY(${dels.map((x) => x.sid)}::text[])`);
       q.push(logQ(sql, me, 'activities', summary, changed.length === 1 ? [] : lines, null));
       await sql.transaction(q);

@@ -9,6 +9,7 @@ import { transport, sendMail } from '../lib/mail.js';
 const EMAIL_RE = /^[^\s@<>()",;:]+@[^\s@<>()",;:]+\.[^\s@<>()",;:]+$/;
 const ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
 const MAX_BATCH = 15;
+const MAX_PHOTO = 120000; /* simboliais (base64), ~90 KB; naršyklė sumažina iki 256×256 */
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; /* 32 simboliai, be painiojamų (I, O, 0, 1) */
 const RISK_RATE = 80, RISK_MIN = 3, RISK_STREAK = 3;
 
@@ -42,11 +43,11 @@ async function myData(sql, sid) {
   if (!ok) return null;
   const [s] = await sql`SELECT first_name AS first, last_name AS last, grade FROM students WHERE id = ${sid}`;
   if (!s) return null;
-  const [coms, recs, arecs, upcoming, [{ today }]] = await Promise.all([
+  const [coms, recs, arecs, upcoming, [{ today }], photo] = await Promise.all([
     sql`SELECT c.id, c.name FROM student_classes sc JOIN classes c ON c.id = sc.class_id WHERE sc.student_id = ${sid}`,
-    sql`SELECT r.class_id AS c, r.d, r.s FROM records r WHERE r.student_id = ${sid} AND r.s <> ''
+    sql`SELECT r.class_id AS c, r.d, r.s, r.by_name AS by, r.marked_at AS at FROM records r WHERE r.student_id = ${sid} AND r.s <> ''
         AND r.class_id IN (SELECT class_id FROM student_classes WHERE student_id = ${sid})`,
-    sql`SELECT a.class_id AS c, a.name AS act, ses.d, ar.s FROM activity_records ar
+    sql`SELECT a.class_id AS c, a.name AS act, ses.d, ar.s, ar.by_name AS by, ar.marked_at AS at FROM activity_records ar
         JOIN activity_sessions ses ON ses.id = ar.session_id JOIN activities a ON a.id = ses.activity_id
         WHERE ar.student_id = ${sid} AND ar.s <> '' AND a.class_id IN (SELECT class_id FROM student_classes WHERE student_id = ${sid})`,
     sql`SELECT ses.d, ses.t_from AS "from", ses.t_to AS "to", a.name, a.place, c.name AS com
@@ -57,16 +58,17 @@ async function myData(sql, sid) {
                OR EXISTS (SELECT 1 FROM activity_students x WHERE x.activity_id = a.id AND x.student_id = ${sid}))
         ORDER BY ses.d, ses.t_from LIMIT 8`,
     sql`SELECT (now() AT TIME ZONE 'Europe/Vilnius')::date::text AS today`,
+    sql`SELECT extract(epoch FROM updated_at)::bigint AS t FROM student_photos WHERE student_id = ${sid}`,
   ]);
   const per = new Map(coms.map((c) => [c.id, { name: c.name, P: 0, A: 0, L: 0, E: 0 }]));
   const seq = [], hist = [];
-  const add = (c, d, st, act) => {
+  const add = (c, d, st, act, by, at) => {
     const x = per.get(c);
     if (!x || !['P', 'A', 'L', 'E'].includes(st)) return;
-    x[st]++; seq.push([d, st]); hist.push({ d, c: x.name, a: act || '', s: st });
+    x[st]++; seq.push([d, st]); hist.push({ d, c: x.name, a: act || '', s: st, by: by || '', at: at || null });
   };
-  recs.forEach((r) => add(r.c, r.d, r.s, ''));
-  arecs.forEach((r) => add(r.c, r.d, r.s, r.act));
+  recs.forEach((r) => add(r.c, r.d, r.s, '', r.by, r.at));
+  arecs.forEach((r) => add(r.c, r.d, r.s, r.act, r.by, r.at));
   const committees = [...per.values()].sort((a, b) => a.name.localeCompare(b.name, 'lt', { numeric: true })).map((x) => ({ ...x, rate: rateOf(x) }));
   const total = { P: 0, A: 0, L: 0, E: 0 };
   committees.forEach((x) => ['P', 'A', 'L', 'E'].forEach((k) => { total[k] += x[k]; }));
@@ -78,6 +80,7 @@ async function myData(sql, sid) {
   const den = total.P + total.L + total.A;
   hist.sort((a, b) => b.d.localeCompare(a.d));
   return {
+    id: sid, photo: photo[0] ? Number(photo[0].t) : 0,
     name: [s.first, s.last].filter(Boolean).join(' '), grade: s.grade || '', today,
     total, committees, streak,
     risk: { low: total.rate != null && total.rate < RISK_RATE && den >= RISK_MIN, streak: streak >= RISK_STREAK ? streak : 0, limit: RISK_RATE },
@@ -181,6 +184,34 @@ export default handler(async (req, res, body) => {
         (SELECT 1 FROM student_classes sc WHERE sc.student_id = c.student_id AND sc.class_id = ANY(${scope}::text[]))) RETURNING c.student_id`;
       if (gone.length) await logEvent(sql, me, 'email', `Atšaukta mokinių prieiga: ${gone.length}`);
       return { ok: true, revoked: gone.length };
+    }
+
+    /* ----- profilio nuotraukos ----- */
+    case 'photo-save': {
+      const me = await getUser(req); requirePerm(me, 'students.photo');
+      const id = str(body.id, 40);
+      const m = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(String(body.image || ''));
+      if (!ID_RE.test(id) || !m) throw new HttpError(400, 'Netinkama nuotrauka.');
+      if (m[1].length > MAX_PHOTO) throw new HttpError(400, 'Nuotrauka per didelė.');
+      if (Buffer.from(m[1].slice(0, 8), 'base64')[0] !== 0xff) throw new HttpError(400, 'Netinkama nuotrauka (reikia JPEG).');
+      const scope = me.classIds;
+      const [s] = await sql`SELECT s.id, s.first_name AS first, s.last_name AS last FROM students s WHERE s.id = ${id} AND (${scope}::text[] IS NULL OR EXISTS
+        (SELECT 1 FROM student_classes sc WHERE sc.student_id = s.id AND sc.class_id = ANY(${scope}::text[])))`;
+      if (!s) throw new HttpError(404, 'Mokinys nerastas arba nėra prieigos.');
+      await sql`INSERT INTO student_photos (student_id, data, updated_at) VALUES (${id}, ${m[1]}, now())
+        ON CONFLICT (student_id) DO UPDATE SET data = EXCLUDED.data, updated_at = now()`;
+      await logEvent(sql, me, 'students', `Pakeista mokinio nuotrauka: ${[s.first, s.last].filter(Boolean).join(' ')}`);
+      return { ok: true };
+    }
+    case 'photo-delete': {
+      const me = await getUser(req); requirePerm(me, 'students.photo');
+      const id = str(body.id, 40);
+      if (!ID_RE.test(id)) throw new HttpError(400, 'Netinkami duomenys.');
+      const scope = me.classIds;
+      const gone = await sql`DELETE FROM student_photos p WHERE p.student_id = ${id} AND (${scope}::text[] IS NULL OR EXISTS
+        (SELECT 1 FROM student_classes sc WHERE sc.student_id = p.student_id AND sc.class_id = ANY(${scope}::text[]))) RETURNING p.student_id`;
+      if (gone.length) await logEvent(sql, me, 'students', 'Pašalinta mokinio nuotrauka');
+      return { ok: true };
     }
 
     default:

@@ -16,8 +16,9 @@ export default handler(async (req, res, body) => {
     const v = (await dataVersion(sql)) + ':' + scope;
     const known = String((req.query && req.query.v) || '');
     if (known && known === v) { await backupP; return { same: true, v }; }
-    const [st] = await Promise.all([fullState(sql, me.classIds), backupP]);
-    return { ...st, v };
+    const [st, photoRows] = await Promise.all([fullState(sql, me.classIds), sql`SELECT p.student_id AS id, extract(epoch FROM p.updated_at)::bigint AS t FROM student_photos p
+      WHERE ${me.classIds}::text[] IS NULL OR EXISTS (SELECT 1 FROM student_classes sc WHERE sc.student_id = p.student_id AND sc.class_id = ANY(${me.classIds}::text[]))`, backupP]);
+    return { ...st, photos: Object.fromEntries(photoRows.map((r) => [r.id, Number(r.t)])), v };
   }
   /* Pakeitimai: kliento siunčiamas skirtumas nuo paskutinės serverio būsenos. Leidimai tikrinami ir LOG įrašas sukuriamas lib/ops.js. */
   await applyOps(sql, me, body.ops, { tag: str(body.tag, 80) });

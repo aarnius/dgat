@@ -196,7 +196,7 @@ const Acts = (() => {
       <div class="card"><div class="actions"><label class="muted">Nuo <input type="date" id="actRepFrom" value="${esc(rFrom)}"></label><label class="muted">Iki <input type="date" id="actRepTo" value="${esc(rTo)}"></label>
         <button class="btn small" data-act="act-range-clear">Visas laikotarpis</button></div>
         ${a.description ? `<p class="act-desc" style="margin-bottom:0">${esc(a.description)}</p>` : ''}</div>
-      <div class="card"><h2>Pagal dalyvį</h2><p class="sub">Užsiėmimų pasirinktame laikotarpyje: ${sess.length}. Rodiklis = (dalyvavo + vėlavo) ÷ (dalyvavo + vėlavo + nedalyvavo).</p>
+      <div class="card"><h2>Pagal dalyvį</h2><p class="sub">Užsiėmimų pasirinktame laikotarpyje: ${sess.length}.</p>
         ${ppl.length ? `${UI.filterBox({ fk: 'actrep', scope: '#actRepTbl', placeholder: 'Ieškoti dalyvio…' })}<div class="table-wrap"><table id="actRepTbl"><thead><tr><th>Mokinys</th><th class="num">Dalyvavo</th><th class="num">Nedalyvavo</th><th class="num">Vėlavo</th><th class="num">Pateisinta</th><th class="num">Rodiklis</th></tr></thead><tbody>${stRows}</tbody></table></div>` : '<p class="muted">Dalyvių nėra.</p>'}</div>
       <div class="card"><h2>Pagal užsiėmimą</h2><p class="sub">&nbsp;</p>
         ${sess.length ? `<div class="table-wrap"><table><thead><tr><th>Data</th><th>Laikas</th><th>Aprašymas</th><th class="num">Dalyvavo</th><th class="num">Nedalyvavo</th><th class="num">Vėlavo</th><th class="num">Pateisinta</th><th class="num">Nepažymėta</th></tr></thead><tbody>${seRows}</tbody></table></div>` : '<p class="muted">Šiuo laikotarpiu užsiėmimų nėra.</p>'}</div>`;
