@@ -1,11 +1,11 @@
-import { db, handler, HttpError, getUser, userById, publicUser, hashPw, checkPw, DUMMY_PW, sessionCookie, clearCookie, requireUser, newId, USERNAME_RE, str, logEvent } from '../lib/server.js';
+import { db, handler, HttpError, getUser, userById, publicUser, withPhoto, hashPw, checkPw, DUMMY_PW, sessionCookie, clearCookie, requireUser, newId, USERNAME_RE, str, logEvent } from '../lib/server.js';
 
 export default handler(async (req, res, body) => {
   const sql = db();
   if (req.method === 'GET') {
     const user = await getUser(req);
     const [{ n }] = await sql`SELECT count(*)::int AS n FROM users`;
-    return { user: publicUser(user), needsSetup: n === 0 };
+    return { user: publicUser(await withPhoto(sql, user)), needsSetup: n === 0 };
   }
 
   switch (body.action) {
@@ -20,7 +20,7 @@ export default handler(async (req, res, body) => {
       if (!rows.length) throw new HttpError(403, 'Pradinė paskyra jau sukurta.');
       res.setHeader('Set-Cookie', sessionCookie(id, false));
       await logEvent(sql, { id, name }, 'auth', 'Sukurta pradinė superadministratoriaus paskyra');
-      return { user: publicUser(await userById(id)) };
+      return { user: publicUser(await withPhoto(sql, await userById(id))) };
     }
 
     case 'login': {
@@ -41,7 +41,7 @@ export default handler(async (req, res, body) => {
       const cookie = sessionCookie(u.id, !!body.remember);
       res.setHeader('Set-Cookie', cookie);
       await logEvent(sql, { id: u.id, name: u.name }, 'auth', 'Prisijungė', [body.remember ? 'Likti prisijungus: taip' : 'Likti prisijungus: ne']);
-      return { user: publicUser(await userById(u.id)) };
+      return { user: publicUser(await withPhoto(sql, await userById(u.id))) };
     }
 
     case 'logout': {
@@ -68,7 +68,22 @@ export default handler(async (req, res, body) => {
         await sql`UPDATE users SET name = ${name}, username = ${username} WHERE id = ${me.id}`;
       }
       await logEvent(sql, me, 'auth', 'Pakeisti savo paskyros duomenys', pw ? ['Pakeistas slaptažodis'] : []);
-      return { user: publicUser(await getUser(req)) };
+      return { user: publicUser(await withPhoto(sql, await getUser(req))) };
+    }
+
+    /* Savo profilio nuotrauka (matoma kitiems darbuotojams ir mokiniams, kuriems pažymėjote lankomumą). */
+    case 'photo': {
+      const me = requireUser(await getUser(req));
+      const m = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(String(body.image || ''));
+      if (!m || m[1].length > 120000 || Buffer.from(m[1].slice(0, 8), 'base64')[0] !== 0xff) throw new HttpError(400, 'Netinkama nuotrauka.');
+      await sql`INSERT INTO user_photos (user_id, data, updated_at) VALUES (${me.id}, ${m[1]}, now())
+        ON CONFLICT (user_id) DO UPDATE SET data = EXCLUDED.data, updated_at = now()`;
+      return { user: publicUser(await withPhoto(sql, await getUser(req))) };
+    }
+    case 'photo-delete': {
+      const me = requireUser(await getUser(req));
+      await sql`DELETE FROM user_photos WHERE user_id = ${me.id}`;
+      return { user: publicUser(await withPhoto(sql, await getUser(req))) };
     }
 
     default:

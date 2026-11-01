@@ -85,7 +85,16 @@ function avatar(s) {
   let h = 0;
   for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 360;
   const ini = ((s.first || '?')[0] + ((s.last || '')[0] || '')).toUpperCase();
+  const ph = s.id && window.PHOTOS ? window.PHOTOS[s.id] : 0;
+  if (s.uid && s.photo) return `<img class="avatar" src="/api/photo?u=${encodeURIComponent(s.uid)}&v=${s.photo}" alt="" loading="lazy" decoding="async" onerror="avFallback(this,'${ini.replace(/[^\p{L}\p{N}]/gu, '')}')">`;
+  if (ph) return `<img class="avatar" src="/api/photo?id=${encodeURIComponent(s.id)}&v=${ph}" alt="" loading="lazy" decoding="async" onerror="avFallback(this,'${ini.replace(/[^\p{L}\p{N}]/gu, '')}')">`;
   return `<span class="avatar" style="background:linear-gradient(135deg,hsl(${h} 70% 55%),hsl(${(h + 40) % 360} 70% 48%))">${esc(ini)}</span>`;
+}
+/* Jei nuotraukos nepavyksta įkelti, vietoje jos rodomi inicialai. */
+function avFallback(img, ini) {
+  const sp = document.createElement('span');
+  sp.className = 'avatar'; sp.style.background = 'var(--grad)'; sp.textContent = ini;
+  img.replaceWith(sp);
 }
 function rateBadge(rate) {
   if (rate == null) return '<span class="rate na">–</span>';
@@ -342,6 +351,7 @@ const ACT_PERM = {
   'export-report': 'reports.export', 'export-all-csv': 'data.backup', 'export-json': 'data.backup',
   'restore-label': 'data.restore', wipe: 'data.wipe',
   'rename-class-id': 'classes.manage', 'delete-class-id': 'classes.manage', 'open-promote': 'students.edit', 'do-promote': 'students.edit', 'open-bulk': 'students.edit', 'do-bulk': 'students.edit',
+  'photo-pick': 'students.photo', 'photo-del': 'students.photo',
   'tool-gsave': 'tools.save', 'tool-gdel': 'tools.save', 'tool-merge': 'students.delete',
   'tool-tpl-new': 'tools.save', 'tool-tpl-update': 'tools.save', 'tool-tpl-rename': 'tools.save', 'tool-tpl-del': 'tools.save',
   'backup-create': 'data.backup', 'backup-download': 'data.backup', 'backup-restore': 'data.restore', 'log-undo': 'logs.undo', 'log-clear': 'logs.clear', 'log-clear-do': 'logs.clear',
@@ -609,7 +619,7 @@ function renderReports() {
       <select id="repMode" aria-label="Ataskaitos tipas">${opt('com', 'Pagal komitetą (šoninėje juostoje pasirinktą)', repMode)}${opt('grade', 'Pagal mokinio klasę', repMode)}</select>
       ${grade ? `<select id="repGrade" aria-label="Klasė">${gradeList().map((g) => opt(g, g + ' klasė', repGrade)).join('')}${opt('-', 'Be klasės', repGrade)}</select>` : ''}
       <label class="muted">Nuo <input type="date" id="repFrom" value="${repFrom}"></label><label class="muted">Iki <input type="date" id="repTo" value="${repTo}"></label>${Auth.can('activities.view') ? `<label class="check" style="margin:0"><input type="checkbox" id="repAct" ${repAct ? 'checked' : ''}> Įskaičiuoti veiklų lankomumą į rodiklį</label>` : ''}</div></div>
-    <div class="card"><h2>Pagal mokinį · ${esc(title)}</h2><p class="sub">Rodiklis = (dalyvavo + vėlavo) ÷ (dalyvavo + vėlavo + nedalyvavo). Pateisintos dienos neįskaičiuojamos.${grade ? ' Klasės ataskaitoje sumuojami visi mokinio komitetai.' : ''}</p>
+    <div class="card"><h2>Pagal mokinį · ${esc(title)}</h2><p class="sub">Pateisintos dienos neįskaičiuojamos.${grade ? ' Klasės ataskaitoje sumuojami visi mokinio komitetai.' : ''}</p>
       ${list.length ? `${list.length > 5 ? UI.filterBox({ fk: 'rep', scope: '#repTbl', placeholder: 'Ieškoti mokinio…' }) : ''}<div class="table-wrap"><table id="repTbl"><thead><tr><th>Mokinys</th>${grade ? '<th class="hide-sm">Komitetai</th>' : ''}<th class="num">Dalyvavo</th><th class="num">Nedalyvavo</th><th class="num">Vėlavo</th><th class="num">Pateisinta</th><th class="num">Rodiklis</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="muted">Nėra mokinių.</p>'}</div>
     <div class="card"><h2>Pagal dieną</h2><p class="sub">Tik dienos lankomumas (veiklų užsiėmimai – atskiroje kortelėje žemiau).</p>
       ${dayRows ? `<div class="table-wrap"><table><thead><tr><th>Data</th><th class="num">Dalyvavo</th><th class="num">Nedalyvavo</th><th class="num">Vėlavo</th><th class="num">Pateisinta</th></tr></thead><tbody>${dayRows}</tbody></table></div>` : '<p class="muted">Šiuo laikotarpiu lankomumo įrašų nėra.</p>'}</div>
@@ -895,9 +905,44 @@ function openCard(id) {
     ${Acts.cardSection(s)}
     <h4 class="card-sec">Praleidimai, vėlavimai ir pastabos</h4>
     ${evRows ? `<div class="table-wrap"><table><thead><tr><th>Data</th><th>Komitetas</th><th>Būsena</th><th>Pastaba</th></tr></thead><tbody>${evRows}</tbody></table></div>${ev.length > 40 ? `<p class="muted" style="font-size:.8rem">Rodoma 40 naujausių iš ${ev.length}.</p>` : ''}` : '<p class="muted">Įrašų nėra.</p>'}
-    <div class="dlg-actions"><button type="button" class="btn" data-act="edit-student" data-sid="${s.id}">Redaguoti</button><button type="button" class="btn primary" data-act="print-card" data-sid="${s.id}">${ICON.print} Spausdinti</button></div></div>`;
+    <div class="dlg-actions">${Auth.can('students.photo') ? `<button type="button" class="btn" data-act="photo-pick" data-sid="${s.id}">Nuotrauka</button>${window.PHOTOS && window.PHOTOS[s.id] ? `<button type="button" class="btn danger" data-act="photo-del" data-sid="${s.id}">Pašalinti nuotrauką</button>` : ''}` : ''}<button type="button" class="btn" data-act="edit-student" data-sid="${s.id}">Redaguoti</button><button type="button" class="btn primary" data-act="print-card" data-sid="${s.id}">${ICON.print} Spausdinti</button></div></div>`;
   applyPerms();
   cardDlg.showModal();
+}
+
+/* ---------- profilio nuotrauka: pasirinkimas, sumažinimas iki 256×256 (JPEG) ir įkėlimas ---------- */
+/* Pasirenka paveikslėlį ir grąžina 256×256 JPEG (data URL), apkarpytą iš vidurio. */
+function photoFromFile() {
+  return new Promise((resolve, reject) => {
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'image/*';
+    inp.onchange = () => {
+      const f = inp.files && inp.files[0];
+      if (!f) return resolve(null);
+      const url = URL.createObjectURL(f), img = new Image();
+      img.onload = () => {
+        const N = 256, side = Math.min(img.naturalWidth, img.naturalHeight);
+        const cv = document.createElement('canvas'); cv.width = cv.height = N;
+        const cx = cv.getContext('2d');
+        cx.fillStyle = '#fff'; cx.fillRect(0, 0, N, N);
+        cx.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, N, N);
+        URL.revokeObjectURL(url);
+        resolve(cv.toDataURL('image/jpeg', 0.85));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Nepavyko perskaityti paveikslėlio')); };
+      img.src = url;
+    };
+    inp.click();
+  });
+}
+async function pickPhoto(sid) {
+  try {
+    const image = await photoFromFile();
+    if (!image) return;
+    await api('/api/student', { action: 'photo-save', id: sid, image });
+    await Sync.pull(false); toast('Nuotrauka įkelta');
+  } catch (err) { toast(err.message || 'Nepavyko įkelti nuotraukos'); }
+  render(); openCard(sid);
 }
 
 /* ---------- exports ---------- */
@@ -958,6 +1003,16 @@ document.addEventListener('click', async (e) => {
     case 'today': attDate = today(); attSession = ''; render(); break;
     case 'add-student': openStudentDialog(null); break;
     case 'student-card': openCard(el.dataset.sid); break;
+    case 'photo-pick': pickPhoto(el.dataset.sid); break;
+    case 'photo-del': {
+      const sid = el.dataset.sid;
+      UI.confirm('Pašalinti šio mokinio nuotrauką?', { title: 'Pašalinti nuotrauką', okText: 'Pašalinti', danger: true }).then(async (ok) => {
+        if (!ok) return;
+        try { await api('/api/student', { action: 'photo-delete', id: sid }); await Sync.pull(false); toast('Nuotrauka pašalinta'); } catch (err) { toast(err.message); }
+        render(); openCard(sid);
+      });
+      break;
+    }
     case 'gopen': { gq = ''; const gi = document.getElementById('gsearch'); if (gi) gi.value = ''; gsearchResults(); openCard(el.dataset.sid); break; }
     case 'close-card': cardDlg.close(); break;
     case 'print-card': { const st = state.students.find((x) => x.id === el.dataset.sid); document.body.classList.add('print-card'); logClient('print-card', st ? displayName(st) : ''); setTimeout(() => window.print(), 50); break; }

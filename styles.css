@@ -132,6 +132,7 @@ th.num, td.num { text-align: center; }
 .who b { font-weight: 600; display: block; line-height: 1.2; }
 .who small { color: var(--muted); }
 .avatar { width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 0.8rem; flex: none; }
+img.avatar { object-fit: cover; background: var(--surface-2); }
 .rate { display: inline-block; padding: 3px 10px; border-radius: 999px; font-weight: 700; font-size: 0.8rem; }
 .rate.good { background: color-mix(in srgb, var(--p) 16%, transparent); color: var(--p); }
 .rate.mid { background: color-mix(in srgb, var(--l) 18%, transparent); color: var(--l); }

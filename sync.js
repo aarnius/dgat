@@ -117,6 +117,7 @@ const Sync = (() => {
     let r;
     try { r = await api(useV && lastV ? '/api/state?v=' + encodeURIComponent(lastV) : '/api/state'); } catch (e) { await actP; throw e; }
     if (r && r.same) return await actP;
+    window.PHOTOS = r.photos || {};
     const recs = nest(r.records);
     const next = { classes: r.classes, students: r.students.map(normStudent), records: recs, currentClassId: null };
     const changed = !isEmpty(diff(state, next));

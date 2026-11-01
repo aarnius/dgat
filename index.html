@@ -53,13 +53,12 @@
           <section class="choice" aria-labelledby="h-student">
             <span class="ico"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12 12 7l10 5-10 5z"/><path d="M6 14v4c3 2 9 2 12 0v-4"/></svg></span>
             <h2 id="h-student">Aš mokinys</h2>
-            <p>Įveskite savo el. paštą ir kodą iš gauto laiško. Pamatysite savo lankomumą.</p>
+            <p>Įveskite savo asmeninį kodą ir pamatysite savo lankomumą.</p>
             <form id="stForm" class="dlg-form" autocomplete="on">
-              <label>El. paštas<input name="email" type="email" required autocomplete="email" autocapitalize="none" spellcheck="false" placeholder="vardas.pavarde@dgg.lt"></label>
-              <label>Kodas<input name="code" class="code-in" required maxlength="9" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX"></label>
+              <label>Kodas<input name="code" class="code-in" required maxlength="9" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX" autofocus></label>
               <div class="form-err" role="alert" id="stErr"></div>
               <button type="submit" class="btn primary block" id="stBtn">Peržiūrėti mano lankomumą</button>
-              <p class="muted" style="font-size:.78rem;margin:10px 0 0">Neturite kodo? Paprašykite tarybos administratoriaus, kad jis išsiųstų jį į jūsų el. paštą.</p>
+              <p class="muted" style="font-size:.78rem;margin:10px 0 0">Neturite kodo? Paprašykite tarybos administratoriaus.</p>
             </form>
           </section>
 
@@ -104,7 +103,7 @@
         err.textContent = ''; btn.disabled = true;
         fetch('/api/student', {
           method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'login', email: form.elements.email.value, code: code.value })
+          body: JSON.stringify({ action: 'login', code: code.value })
         }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, j: j }; }); })
           .then(function (x) {
             if (x.ok) { location.href = '/mano'; return; }

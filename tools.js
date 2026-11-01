@@ -268,7 +268,7 @@ const Tools = (() => {
       ${Auth.can('activities.view') ? `<label class="check"><input type="checkbox" data-tool="R.acts" ${R.acts ? 'checked' : ''}> Įskaičiuoti veiklų lankomumą</label>` : ''}
       <button class="btn small" data-act="tool-print" data-t="risk">${ICON.print} Spausdinti</button><button class="btn small" data-act="tool-csv" data-t="risk">CSV</button>${Auth.can('tools.save') ? '<button class="btn small primary" data-act="tool-mail-risk">✉ Siųsti laišką</button>' : ''}</div></div>
       <div class="print-only print-title"><h2>Rizikos sąrašas – ${R.scope === 'all' ? 'visi komitetai' : esc(comName(cid()))}</h2><p>${esc(per)} · lankomumas žemiau ${R.thr}%${R.streak ? ` arba ${R.streak}+ praleidimai iš eilės` : ''}</p></div>
-      <div class="card"><h2>Reikia dėmesio: ${rows.length}</h2><p class="sub no-print">Rodiklis = (dalyvavo + vėlavo) ÷ (dalyvavo + vėlavo + nedalyvavo). „Iš eilės“ skaičiuojama pagal komiteto dienų žymas; pateisintos dienos serijos nenutraukia.</p>
+      <div class="card"><h2>Reikia dėmesio: ${rows.length}</h2><p class="sub no-print">„Iš eilės“ skaičiuojama pagal komiteto dienų žymas; pateisintos dienos serijos nenutraukia.</p>
       ${rows.length ? `${UI.filterBox({ fk: 'risk', scope: '#riskTbl', placeholder: 'Ieškoti mokinio sąraše…' })}<div class="table-wrap"><table id="riskTbl"><thead><tr><th>Mokinys</th><th class="hide-sm">Komitetai</th><th class="num">Nedalyvavo</th><th class="num">Vėlavo</th><th class="num">Iš eilės</th><th class="hide-sm">Paskutinis praleidimas</th><th class="num">Rodiklis</th></tr></thead><tbody>${rows.map((x) =>
         `<tr><td><div class="who">${avatar(x.s)}<div><b class="name-link" data-act="student-card" data-sid="${x.s.id}" role="button" tabindex="0">${esc(displayName(x.s))}</b>${x.s.grade ? `<small>${esc(x.s.grade)} kl.</small>` : ''}</div></div></td><td class="hide-sm">${esc(x.coms)}</td><td class="num">${x.t.A}</td><td class="num">${x.t.L}</td><td class="num">${x.streak}</td><td class="hide-sm">${esc(x.lastAbs || '–')}</td><td class="num">${rateBadge(x.rate)}</td></tr>`).join('')}</tbody></table></div>`
         : '<p class="muted">Pagal šiuos kriterijus nieko nerasta. Puiku!</p>'}</div>`;
@@ -406,7 +406,7 @@ const Tools = (() => {
     toast(`Išsiųsta laiškų: ${sent.length}${bad.length ? ` · nepavyko: ${bad.length}` : ''}`);
   }
 
-  /* ---------- mokinių prieiga: prisijungimo kodai (mokinys mato savo lankomumą puslapyje /mano) ---------- */
+  /* ---------- mokinių prieiga: prisijungimo kodai (mokinys su kodu mato savo lankomumą) ---------- */
   function loadCodes() {
     A.st = 'loading';
     api('/api/student', { action: 'status' }).then((r) => { A.codes = r.codes; }).catch((e) => { A.codes = {}; toast(e.message); })
@@ -417,56 +417,74 @@ const Tools = (() => {
     const s = document.getElementById('aStatus');
     if (s) { s.innerHTML = html; s.style.color = bad ? 'var(--danger, #c0392b)' : ''; }
   }
+  const showCode = (c) => (c ? c.slice(0, 4) + '-' + c.slice(4) : '');
+  const hasCode = (x) => !!(x.code && x.code.code);
   const accessList = () => pool().map((s) => ({ s, email: String(s.email || '').trim(), code: (A.codes || {})[s.id] || null }));
-  const accessTargets = () => accessList().filter((x) => EMAIL_RE.test(x.email) && (A.resend || !x.code));
+  /* kam kurti kodus: tiems, kurie jų neturi (arba visiems, jei pažymėta „kurti naujus“) */
+  const createTargets = () => accessList().filter((x) => A.resend || !hasCode(x));
+  /* kam siųsti laišką: turintiems el. paštą ir (nauji arba pažymėta „kurti naujus“) */
+  const mailTargets = () => createTargets().filter((x) => EMAIL_RE.test(x.email));
   function renderAccess() {
     if (!Auth.can('students.access')) return srcBox() + '<div class="card"><p class="muted">Šiai skilčiai reikia leidimo „Išduoti mokiniams prisijungimo kodus“ (rolių puslapyje).</p></div>';
     if (A.codes === null && A.st === 'idle') loadCodes();
-    const list = accessList(), targets = accessTargets();
-    const withCode = list.filter((x) => x.code).length, noMail = list.filter((x) => !EMAIL_RE.test(x.email)).length;
-    const rows = list.map(({ s, email, code }) => {
-      const ok = EMAIL_RE.test(email);
-      const st = code ? (code.sentAt ? `<span class="rate good">Išsiųstas ${esc(new Date(code.sentAt).toLocaleDateString('lt-LT'))}</span>` : '<span class="rate mid">Sukurtas</span>') : '<span class="rate na">–</span>';
-      return `<tr><td><div class="who">${avatar(s)}<div><b>${esc(displayName(s))}</b>${s.grade ? `<small>${esc(s.grade)} kl.</small>` : ''}</div></div></td><td class="hide-sm">${ok ? esc(email) : '<span class="muted">nėra el. pašto</span>'}</td><td class="num">${st}</td></tr>`;
+    const list = accessList(), cT = createTargets(), mT = mailTargets();
+    const withCode = list.filter(hasCode).length, legacy = list.filter((x) => x.code && !x.code.code).length;
+    const rows = list.map((x) => {
+      const { s, email, code } = x;
+      const st = !code ? '<span class="rate na">–</span>' : !code.code ? '<span class="rate low">Sukurkite iš naujo</span>' : (code.sentAt ? `<span class="rate good">Laiškas ${esc(new Date(code.sentAt).toLocaleDateString('lt-LT'))}</span>` : '<span class="rate mid">Neišsiųstas</span>');
+      return `<tr><td><div class="who">${avatar(s)}<div><b>${esc(displayName(s))}</b>${s.grade ? `<small>${esc(s.grade)} kl.</small>` : ''}</div></div></td>
+        <td class="num"><b style="font-family:ui-monospace,Menlo,Consolas,monospace;letter-spacing:.12em;font-size:1.02rem">${hasCode(x) ? esc(showCode(code.code)) : '–'}</b></td>
+        <td class="hide-sm">${EMAIL_RE.test(email) ? esc(email) : '<span class="muted">nėra el. pašto</span>'}</td><td class="num">${st}</td></tr>`;
     }).join('');
     return srcBox() + `<div class="card no-print"><h2>Mokinių prieiga prie savo lankomumo</h2>
-      <p class="sub">Mokiniui į jo el. paštą išsiunčiamas 8 simbolių kodas. Su juo jis prisijungia puslapyje <b>/mano</b> ir mato tik savo lankomumą, komitetus, artimiausias veiklas ir įspėjimą, jei lankomumas per mažas. Kodas galioja 90 dienų, naujas kodas pakeičia seną.</p>
-      <div class="tool-opts"><label class="check"><input type="checkbox" data-tool="A.resend" ${A.resend ? 'checked' : ''}> Siųsti ir tiems, kurie jau gavo kodą (jie gaus naują, senas nebegalios)</label></div>
-      <p style="margin:10px 0 0"><b>Bus išsiųsta: ${targets.length}</b> <span class="muted">· jau turi kodą: ${withCode}${noMail ? ` · be el. pašto: ${noMail}` : ''}</span></p>
-      <div class="actions" style="margin-top:12px"><button class="btn primary" id="aSend" data-act="tool-access-send" ${targets.length && !A.busy ? '' : 'disabled'}>✉ Siųsti kodus: ${targets.length}</button>
-      <button class="btn danger" data-act="tool-access-revoke" ${withCode && !A.busy ? '' : 'disabled'}>Atšaukti prieigą (${withCode})</button></div>
+      <p class="sub">Kiekvienas mokinys gauna asmeninį 8 simbolių kodą. Su juo (be el. pašto) jis prisijungia pagrindiniame puslapyje skiltyje „Aš mokinys“ ir mato tik savo lankomumą, komitetus, artimiausias veiklas ir kas jam pažymėjo. Kodą galite išsiųsti laišku arba tiesiog parodyti ar išspausdinti – jis matomas lentelėje. Kodas galioja 90 dienų, naujas kodas pakeičia seną.</p>
+      <div class="tool-opts"><label class="check"><input type="checkbox" data-tool="A.resend" ${A.resend ? 'checked' : ''}> Kurti naujus ir tiems, kurie jau turi kodą (senas nebegalios)</label></div>
+      <p style="margin:10px 0 0"><b>Be kodo / bus sukurta: ${cT.length}</b> <span class="muted">· jau turi kodą: ${withCode}${legacy ? ` · reikia sukurti iš naujo: ${legacy}` : ''} · gaus laišką: ${mT.length}</span></p>
+      <div class="actions" style="margin-top:12px;flex-wrap:wrap"><button class="btn primary" data-act="tool-access-create" ${cT.length && !A.busy ? '' : 'disabled'}>Sukurti kodus: ${cT.length}</button>
+      <button class="btn" data-act="tool-access-send" ${mT.length && !A.busy ? '' : 'disabled'}>✉ Sukurti ir išsiųsti laišku: ${mT.length}</button>
+      <button class="btn" data-act="tool-access-csv" ${withCode ? '' : 'disabled'}>CSV su kodais</button>
+      <button class="btn small" data-act="tool-print" data-t="access" ${withCode ? '' : 'disabled'}>${ICON.print} Spausdinti</button>
+      <span class="spacer"></span><button class="btn danger" data-act="tool-access-revoke" ${withCode && !A.busy ? '' : 'disabled'}>Atšaukti prieigą (${withCode})</button></div>
       <div id="aStatus" class="muted" style="margin-top:10px;min-height:1.2em${A.bad ? ';color:var(--danger, #c0392b)' : ''}">${A.status}</div></div>
-      <div class="card"><h2>Mokiniai: ${list.length}</h2>${list.length ? `<div class="table-wrap"><table><thead><tr><th>Mokinys</th><th class="hide-sm">El. paštas</th><th class="num">Kodas</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="muted">Mokinių nėra.</p>'}</div>`;
+      <div class="print-only print-title"><h2>Mokinių prisijungimo kodai – ${esc(comName(cid()))}</h2><p>Kodas įvedamas pagrindiniame puslapyje, skiltyje „Aš mokinys“. Nesidalinkite juo su kitais.</p></div>
+      <div class="card"><h2>Mokiniai: ${list.length}</h2>${list.length ? `<div class="table-wrap"><table><thead><tr><th>Mokinys</th><th class="num">Kodas</th><th class="hide-sm">El. paštas</th><th class="num">Būsena</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="muted">Mokinių nėra.</p>'}</div>`;
   }
-  async function accessSend() {
+  /* send=false: tik sukuria kodus; send=true: sukuria ir išsiunčia laišką (kam yra el. paštas) */
+  async function accessIssue(send) {
     if (A.busy) return;
-    const recs = accessTargets();
-    if (!recs.length) { toast('Nėra kam siųsti'); return; }
-    const ok = await UI.confirm(`Išsiųsti prisijungimo kodus ${recs.length} mokiniams į jų el. paštą?`, { title: 'Patvirtinkite siuntimą', okText: 'Siųsti' });
+    const recs = send ? mailTargets() : createTargets();
+    if (!recs.length) { toast('Nėra kam kurti kodų'); return; }
+    const ok = await UI.confirm(send ? `Sukurti kodus ir išsiųsti laiškus ${recs.length} mokiniams?` : `Sukurti kodus ${recs.length} mokiniams?${A.resend ? ' Turimi kodai nustos galioti.' : ''}`, { title: send ? 'Patvirtinkite siuntimą' : 'Sukurti kodus', okText: send ? 'Siųsti' : 'Sukurti' });
     if (!ok) return;
-    A.busy = true;
-    const btn = document.getElementById('aSend'); if (btn) btn.disabled = true;
-    const sent = [], failed = [], skipped = [];
+    A.busy = true; render();
+    const chunk = send ? ACC_CHUNK : 50;
+    const created = [], sent = [], failed = [], skipped = [];
     let err = null;
     try {
-      for (let i = 0; i < recs.length; i += ACC_CHUNK) {
-        accessStatus(`Siunčiama… ${sent.length + failed.length} iš ${recs.length}`);
-        const r = await api('/api/student', { action: 'issue', ids: recs.slice(i, i + ACC_CHUNK).map((x) => x.s.id) });
-        sent.push(...r.sent); failed.push(...r.failed); skipped.push(...r.skipped);
+      for (let i = 0; i < recs.length; i += chunk) {
+        accessStatus(`Kuriama… ${created.length + failed.length} iš ${recs.length}`);
+        const r = await api('/api/student', { action: 'issue', send, ids: recs.slice(i, i + chunk).map((x) => x.s.id) });
+        created.push(...r.created); sent.push(...r.sent); failed.push(...r.failed); skipped.push(...r.skipped);
       }
     } catch (e) { err = e; }
     A.busy = false;
     const bad = failed.map((f) => ({ name: f.name, error: f.error })).concat(skipped.map((s) => ({ name: s.name, error: s.reason })));
-    A.status = `<b>Išsiųsta: ${sent.length}</b>${bad.length ? ` · nepavyko / praleista: ${bad.length}` : ''}${err ? `<br>Siuntimas nutrauktas: ${esc(err.message)}.` : ''}` +
+    A.status = `<b>Sukurta kodų: ${created.length}</b>${send ? ` · laiškų išsiųsta: ${sent.length}` : ''}${bad.length ? ` · pastabų: ${bad.length}` : ''}${err ? `<br>Veiksmas nutrauktas: ${esc(err.message)}.` : ''}` +
       (bad.length ? `<br><small>${bad.slice(0, 15).map((x) => esc(x.name) + ' – ' + esc(x.error)).join('<br>')}${bad.length > 15 ? '<br>…' : ''}</small>` : '');
-    A.bad = !!err || (!sent.length && !!bad.length);
-    toast(`Išsiųsta kodų: ${sent.length}${bad.length ? ` · nepavyko: ${bad.length}` : ''}`);
+    A.bad = !!err || (!created.length && !!bad.length);
+    toast(`Sukurta kodų: ${created.length}${send ? ` · laiškų: ${sent.length}` : ''}`);
     A.codes = null; A.st = 'idle'; render();
+  }
+  function accessCsv() {
+    const rows = accessList().filter(hasCode);
+    if (!rows.length) return;
+    logClient('export-tool', 'mokiniu-kodai');
+    download(`mokiniu-kodai-${today()}.csv`, [['Mokinys', 'Klasė', 'Kodas'].map(csvCell).join(','), ...rows.map((x) => [displayName(x.s), x.s.grade || '', showCode(x.code.code)].map(csvCell).join(','))].join('\n'));
   }
   async function accessRevoke() {
     const ids = accessList().filter((x) => x.code).map((x) => x.s.id);
     if (!ids.length) return;
-    const ok = await UI.confirm(`Atšaukti prieigą ${ids.length} mokiniams? Jie nebegalės prisijungti su ankstesniais kodais.`, { title: 'Atšaukti prieigą', okText: 'Atšaukti prieigą', danger: true });
+    const ok = await UI.confirm(`Atšaukti prieigą ${ids.length} mokiniams? Jų kodai nustos veikti.`, { title: 'Atšaukti prieigą', okText: 'Atšaukti prieigą', danger: true });
     if (!ok) return;
     try { const r = await api('/api/student', { action: 'revoke', ids }); A.status = `Prieiga atšaukta: ${r.revoked}`; A.bad = false; toast('Prieiga atšaukta'); }
     catch (e) { toast(e.message); }
@@ -675,7 +693,9 @@ const Tools = (() => {
       case 'tool-mail-ins': mailInsert(el.dataset.v); return true;
       case 'tool-mail-test': mailTest(); return true;
       case 'tool-mail-send': mailSend(); return true;
-      case 'tool-access-send': accessSend(); return true;
+      case 'tool-access-create': accessIssue(false); return true;
+      case 'tool-access-send': accessIssue(true); return true;
+      case 'tool-access-csv': accessCsv(); return true;
       case 'tool-access-revoke': accessRevoke(); return true;
       case 'tool-mtpl-new':
         UI.prompt('Naujas laiško šablonas', (curPreset() && !isSavedPreset(curPreset()) ? curPreset().name : M.subject.trim()), { label: 'Šablono pavadinimas', okText: 'Išsaugoti', max: 120 }).then((name) => { if (name) mailSaveTpl('', name); });

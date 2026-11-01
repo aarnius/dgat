@@ -4,7 +4,7 @@ const PERMS = [
   { g: 'Apžvalga', items: [['dashboard.view', 'Matyti apžvalgą'], ['calendar.all', 'Matyti bendrą visų komitetų kalendorių apžvalgoje']] },
   { g: 'Lankomumas', items: [['attendance.view', 'Matyti lankomumą'], ['attendance.mark', 'Žymėti lankomumą'], ['attendance.free', 'Žymėti dienos lankomumą be veiklos (kitaip – tik dienomis, kai komitetas turi veiklą)']] },
   { g: 'Veiklos', items: [['activities.view', 'Matyti veiklas'], ['activities.create', 'Kurti veiklas (tik matomiems komitetams)'], ['activities.edit', 'Redaguoti veiklas ir jų užsiėmimus (datas)'], ['activities.delete', 'Ištrinti veiklas'], ['activities.mark', 'Žymėti lankomumą veiklų užsiėmimuose'], ['activities.report', 'Veiklų ataskaitos, eksportas ir spausdinimas']] },
-  { g: 'Mokiniai', items: [['students.view', 'Matyti mokinius'], ['students.edit', 'Pridėti ir redaguoti mokinius'], ['students.delete', 'Ištrinti mokinius'], ['students.import', 'Importuoti mokinius'], ['students.access', 'Išduoti mokiniams prisijungimo kodus (jie matys savo lankomumą puslapyje /mano)']] },
+  { g: 'Mokiniai', items: [['students.view', 'Matyti mokinius'], ['students.edit', 'Pridėti ir redaguoti mokinius'], ['students.delete', 'Ištrinti mokinius'], ['students.import', 'Importuoti mokinius'], ['students.access', 'Išduoti mokiniams prisijungimo kodus (jie matys savo lankomumą puslapyje /mano)'], ['students.photo', 'Keisti mokinių profilio nuotraukas']] },
   { g: 'Komitetai', items: [['classes.all', 'Matyti visus komitetus (kitaip – tik vartotojui priskirtus)'], ['classes.manage', 'Kurti, pervadinti ir ištrinti komitetus']] },
   { g: 'Ataskaitos', items: [['reports.view', 'Matyti ataskaitas'], ['reports.export', 'Eksportuoti ataskaitas (CSV)']] },
   { g: 'Duomenys', items: [['data.view', 'Atidaryti skiltį „Duomenys“'], ['data.backup', 'Atsisiųsti atsarginę kopiją'], ['data.restore', 'Atkurti iš kopijos'], ['data.wipe', 'Ištrinti visus duomenis']] },
@@ -97,7 +97,7 @@ const Auth = (() => {
     if (!me) return '';
     const out = svg('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/>');
     const pen = svg('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>', 15);
-    return `<div class="userchip"><button class="userchip-btn" data-act="my-account" title="Keisti vardą ir slaptažodį">${avatar({ first: me.name })}<span class="hide-sm"><b>${esc(me.name)}</b><small class="muted">${esc(me.roleName || '')}</small></span><span class="chip-edit" aria-hidden="true">${pen}</span></button>
+    return `<div class="userchip"><button class="userchip-btn" data-act="my-account" title="Keisti vardą ir slaptažodį">${avatar({ first: me.name, uid: me.id, photo: me.photo })}<span class="hide-sm"><b>${esc(me.name)}</b><small class="muted">${esc(me.roleName || '')}</small></span><span class="chip-edit" aria-hidden="true">${pen}</span></button>
       <button class="icon-btn" data-act="logout" title="Atsijungti" aria-label="Atsijungti">${out}</button></div>`;
   }
 
@@ -128,7 +128,7 @@ const Auth = (() => {
     if (!ensureAdmin()) return;
     const rows = admin.users.map((u) => {
       const off = !u.active;
-      return `<tr><td><div class="who">${avatar({ first: u.name })}<div><b>${esc(u.name)}</b><small>${esc(u.username)}</small></div></div></td>
+      return `<tr><td><div class="who">${avatar({ first: u.name, uid: u.id, photo: u.photo })}<div><b>${esc(u.name)}</b><small>${esc(u.username)}</small></div></div></td>
         <td>${esc(roleName(u.roleId))}</td>
         <td class="hide-sm"><span class="rate ${off ? 'low' : 'good'}">${off ? 'Išjungtas' : 'Aktyvus'}</span></td>
         <td class="row-actions"><button class="btn small" data-act="edit-user" data-uid="${u.id}">Redaguoti</button> <button class="btn small danger" data-act="delete-user" data-uid="${u.id}">Ištrinti</button></td></tr>`;
@@ -158,6 +158,8 @@ const Auth = (() => {
   function openAccountDialog() {
     dlg.innerHTML = `<div class="dlg"><div class="dlg-head"><h3>Mano paskyra</h3><button type="button" class="icon-btn" data-act="close-auth" aria-label="Uždaryti">&times;</button></div>
       <form data-form="account">
+        <div class="who" style="margin-bottom:14px;gap:14px">${avatar({ first: me.name, uid: me.id, photo: me.photo })}<div><b>Mano nuotrauka</b><small class="muted" style="display:block">Ją mato mokiniai, kuriems pažymite lankomumą</small>
+          <button type="button" class="btn small" data-act="my-photo-pick" style="margin-top:6px">Pasirinkti</button>${me.photo ? ' <button type="button" class="btn small danger" data-act="my-photo-del" style="margin-top:6px">Pašalinti</button>' : ''}</div></div>
         <label>Vardas ir pavardė<input name="name" required value="${esc(me.name)}"></label>
         <label>Vartotojo vardas (prisijungimui)<input name="username" required autocapitalize="none" spellcheck="false" value="${esc(me.username)}"></label>
         <label>Dabartinis slaptažodis (jei keičiate)<input name="current" type="password" autocomplete="current-password"></label>
@@ -195,6 +197,15 @@ const Auth = (() => {
         api('/api/auth', { action: 'logout' }).catch(() => { /* ignore */ }).then(() => { me = null; admin = null; Sync.reset(); view = 'dashboard'; render(); });
         break;
       case 'my-account': openAccountDialog(); break;
+      case 'my-photo-pick':
+        photoFromFile().then(async (image) => {
+          if (!image) return;
+          me = (await api('/api/auth', { action: 'photo', image })).user; toast('Nuotrauka išsaugota'); openAccountDialog(); render();
+        }).catch((e) => toast(e.message));
+        break;
+      case 'my-photo-del':
+        api('/api/auth', { action: 'photo-delete' }).then((r) => { me = r.user; toast('Nuotrauka pašalinta'); openAccountDialog(); render(); }).catch((e) => toast(e.message));
+        break;
       case 'close-auth': dlg.close(); break;
       case 'add-user': if (admin) openUserDialog(null); break;
       case 'edit-user': { const u = admin && admin.users.find((x) => x.id === uid2); if (u) openUserDialog(u); break; }
