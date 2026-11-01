@@ -2,7 +2,8 @@ import { db, handler, HttpError, getUser, can, requireUser, requirePerm, hashPw,
 
 async function snapshot(sql) {
   const [users, roles, customPerms, classes] = await Promise.all([
-    sql`SELECT id, name, username, role_id AS "roleId", active, class_ids AS "classIds" FROM users ORDER BY name`,
+    sql`SELECT u.id, u.name, u.username, u.role_id AS "roleId", u.active, u.class_ids AS "classIds", COALESCE(extract(epoch FROM p.updated_at)::bigint, 0) AS photo
+      FROM users u LEFT JOIN user_photos p ON p.user_id = u.id ORDER BY u.name`,
     sql`SELECT id, name, system, perms FROM roles ORDER BY system DESC, name`,
     sql`SELECT key, label FROM custom_perms ORDER BY label`,
     sql`SELECT id, name FROM classes ORDER BY name`,

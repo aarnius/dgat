@@ -44,6 +44,8 @@
     .row .t { flex: 1; min-width: 0; font-size: 0.9rem; }
     .row .t small { display: block; color: var(--muted); }
     .st { font-size: 0.78rem; font-weight: 700; padding: 3px 10px; border-radius: 999px; background: color-mix(in srgb, var(--c) 16%, transparent); color: var(--c); white-space: nowrap; }
+    .mk { display: inline-flex; align-items: center; gap: 6px; vertical-align: middle; }
+    .mk img, .mk i { width: 20px; height: 20px; border-radius: 7px; object-fit: cover; flex: none; font-style: normal; display: inline-grid; place-items: center; background: var(--grad); color: #fff; font-size: 0.6rem; font-weight: 700; }
     .toggle { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--muted); margin: 0 0 12px; cursor: pointer; }
     .toggle input { width: 18px; height: 18px; padding: 0; accent-color: var(--brand); }
     @media (max-width: 560px) { .hero { grid-template-columns: 1fr; justify-items: center; } .tiles { width: 100%; } .ring { width: 140px; height: 140px; } .ring .num { font-size: 1.9rem; } .me table th, .me table td { padding-left: 6px; padding-right: 6px; } .row .d { min-width: 64px; } }
@@ -113,7 +115,9 @@
         var hist = d.history.filter(function (x) { return !onlyIssues || x.s !== 'P'; });
         h += '<div class="card"><h2>Istorija</h2><label class="toggle"><input type="checkbox" id="onlyIssues" ' + (onlyIssues ? 'checked' : '') + '> Rodyti tik praleidimus, vėlavimus ir pateisinimus</label>' +
           (hist.length ? '<div class="list">' + hist.slice(0, 40).map(function (x) {
-            var by = x.by ? '<small>Pažymėjo: ' + esc(x.by) + (x.at ? ' · ' + esc(new Date(x.at).toLocaleDateString('lt-LT', { month: 'short', day: 'numeric' })) : '') + '</small>' : '';
+            var mini = x.by ? x.by.split(' ').filter(Boolean).map(function (w) { return w[0]; }).slice(0, 2).join('').toUpperCase() : '';
+            var mph = x.byId && d.markers && d.markers[x.byId] ? '<img src="/api/photo?u=' + encodeURIComponent(x.byId) + '&v=' + d.markers[x.byId] + '" alt="" onerror="this.outerHTML=\'<i>' + esc(mini) + '</i>\'">' : '<i aria-hidden="true">' + esc(mini) + '</i>';
+            var by = x.by ? '<small>Pažymėjo <span class="mk">' + mph + '<b>' + esc(x.by) + '</b></span>' + (x.at ? ' · ' + esc(new Date(x.at).toLocaleDateString('lt-LT', { month: 'short', day: 'numeric' })) : '') + '</small>' : '';
             return '<div class="row"><span class="d">' + esc(dateLt(x.d)) + '</span><span class="t">' + esc(x.c) + (x.a ? '<small>' + esc(x.a) + '</small>' : '') + by + '</span><span class="st" style="--c:' + ST[x.s][1] + '">' + ST[x.s][0] + '</span></div>';
           }).join('') + '</div>' : '<p class="muted" style="margin:0">' + (onlyIssues ? 'Praleidimų nėra. Puiku!' : 'Įrašų dar nėra.') + '</p>') +
           '</div>';

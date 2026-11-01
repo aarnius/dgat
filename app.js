@@ -86,6 +86,7 @@ function avatar(s) {
   for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 360;
   const ini = ((s.first || '?')[0] + ((s.last || '')[0] || '')).toUpperCase();
   const ph = s.id && window.PHOTOS ? window.PHOTOS[s.id] : 0;
+  if (s.uid && s.photo) return `<img class="avatar" src="/api/photo?u=${encodeURIComponent(s.uid)}&v=${s.photo}" alt="" loading="lazy" decoding="async" onerror="avFallback(this,'${ini.replace(/[^\p{L}\p{N}]/gu, '')}')">`;
   if (ph) return `<img class="avatar" src="/api/photo?id=${encodeURIComponent(s.id)}&v=${ph}" alt="" loading="lazy" decoding="async" onerror="avFallback(this,'${ini.replace(/[^\p{L}\p{N}]/gu, '')}')">`;
   return `<span class="avatar" style="background:linear-gradient(135deg,hsl(${h} 70% 55%),hsl(${(h + 40) % 360} 70% 48%))">${esc(ini)}</span>`;
 }
@@ -910,29 +911,38 @@ function openCard(id) {
 }
 
 /* ---------- profilio nuotrauka: pasirinkimas, sumažinimas iki 256×256 (JPEG) ir įkėlimas ---------- */
-function pickPhoto(sid) {
-  const inp = document.createElement('input');
-  inp.type = 'file'; inp.accept = 'image/*';
-  inp.onchange = () => {
-    const f = inp.files && inp.files[0];
-    if (!f) return;
-    const url = URL.createObjectURL(f), img = new Image();
-    img.onload = async () => {
-      try {
+/* Pasirenka paveikslėlį ir grąžina 256×256 JPEG (data URL), apkarpytą iš vidurio. */
+function photoFromFile() {
+  return new Promise((resolve, reject) => {
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'image/*';
+    inp.onchange = () => {
+      const f = inp.files && inp.files[0];
+      if (!f) return resolve(null);
+      const url = URL.createObjectURL(f), img = new Image();
+      img.onload = () => {
         const N = 256, side = Math.min(img.naturalWidth, img.naturalHeight);
         const cv = document.createElement('canvas'); cv.width = cv.height = N;
         const cx = cv.getContext('2d');
         cx.fillStyle = '#fff'; cx.fillRect(0, 0, N, N);
         cx.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, N, N);
-        await api('/api/student', { action: 'photo-save', id: sid, image: cv.toDataURL('image/jpeg', 0.85) });
-        await Sync.pull(false); toast('Nuotrauka įkelta');
-      } catch (err) { toast(err.message || 'Nepavyko įkelti nuotraukos'); }
-      URL.revokeObjectURL(url); render(); openCard(sid);
+        URL.revokeObjectURL(url);
+        resolve(cv.toDataURL('image/jpeg', 0.85));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Nepavyko perskaityti paveikslėlio')); };
+      img.src = url;
     };
-    img.onerror = () => { URL.revokeObjectURL(url); toast('Nepavyko perskaityti paveikslėlio'); };
-    img.src = url;
-  };
-  inp.click();
+    inp.click();
+  });
+}
+async function pickPhoto(sid) {
+  try {
+    const image = await photoFromFile();
+    if (!image) return;
+    await api('/api/student', { action: 'photo-save', id: sid, image });
+    await Sync.pull(false); toast('Nuotrauka įkelta');
+  } catch (err) { toast(err.message || 'Nepavyko įkelti nuotraukos'); }
+  render(); openCard(sid);
 }
 
 /* ---------- exports ---------- */
