@@ -444,7 +444,9 @@ function renderAttendance() {
   if (ssid !== '-' && !sess.some((x) => x.id === ssid)) ssid = sess.length ? sess[0].id : '-';
   const cur = ssid === '-' ? null : sess.find((x) => x.id === ssid);
   const dayOk = Auth.can('attendance.free') || sess.length > 0;
-  const canMark = cur ? Auth.can('activities.mark') : Auth.can('attendance.mark') && dayOk;
+  /* Jau įvykusių veiklų užsiėmimus (ankstesnė nei šiandien data) keisti gali tik turintys leidimą activities.past. */
+  const pastLock = !!cur && attDate < today() && !Auth.can('activities.past');
+  const canMark = cur ? Auth.can('activities.mark') && !pastLock : Auth.can('attendance.mark') && dayOk;
   const list = cur ? Acts.participants(cur.act) : classStudents();
   const getR = (sid) => (cur ? Acts.get(cur.id, sid) : getRec(cid, attDate, sid));
   const c = { P: 0, A: 0, L: 0, E: 0, none: 0 };
@@ -460,7 +462,9 @@ function renderAttendance() {
   }).join('');
   const tabs = sess.length
     ? `<div class="sess-tabs no-print">${sess.map((x) => `<button class="btn small ${x.id === ssid ? 'primary' : ''}" data-act="pick-session" data-ssid="${x.id}">${esc(x.act.name)}${x.from ? ' · ' + esc(x.from) : ''}</button>`).join('')}<button class="btn small ${ssid === '-' ? 'primary' : ''}" data-act="pick-session" data-ssid="-">Visa diena</button></div>` : '';
-  const notice = !cur && !dayOk
+  const notice = pastLock
+    ? '<div class="notice no-print"><span>Ši veikla jau įvyko, todėl lankomumo keisti negalima. Prireikus kreipkitės į administratorių.</span></div>'
+    : !cur && !dayOk
     ? `<div class="notice no-print"><span>Šią dieną šiame komitete veiklos nėra, todėl lankomumo žymėti negalima.</span>${Auth.can('activities.create') && Auth.can('activities.view') ? '<button class="btn small primary" data-act="act-new-here">Sukurti veiklą</button>' : '<span class="muted">Kreipkitės į administratorių.</span>'}</div>` : '';
   const actions = `<button class="btn" data-act="print-page" data-what="print-day">${ICON.print} Spausdinti</button>` +
     (canMark ? `<button class="btn" data-act="${cur ? 'sclear' : 'clear-day'}"${ssAttr}>Išvalyti ${cur ? 'užsiėmimą' : 'dieną'}</button><button class="btn primary" data-act="${cur ? 'sall-present' : 'all-present'}"${ssAttr}>${ICON.check} Visi dalyvavo</button>` : '');

@@ -10,6 +10,13 @@ const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const STATUS = ['', 'P', 'A', 'L', 'E'];
 const STATUS_LT = { P: 'Dalyvavo', A: 'Nedalyvavo', L: 'Vėlavo', E: 'Pateisinta', '': 'Žyma pašalinta' };
 const MAX_REPEAT = 60;
+
+/* Jau įvykusių (ankstesnės nei šiandien datos) užsiėmimų keisti negalima, nebent turimas leidimas activities.past. */
+const todayLt = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Vilnius' });
+const PAST_MSG = 'Jau įvykusių veiklų keisti negalima. Tam reikia leidimo „Keisti jau įvykusias veiklas“.';
+function needPast(me, d) {
+  if (d && d < todayLt() && !canAny(me, ['activities.past'])) throw new HttpError(403, PAST_MSG);
+}
 const MAX_MARKS = 2000;
 
 const uniq = (a) => [...new Set(a)];
@@ -92,6 +99,9 @@ export default handler(async (req, res, body) => {
         requirePerm(me, 'activities.edit');
         ex = await loadActivity(sql, me, id);
         classId = ex.class_id; className = ex.class_name;
+        /* Visi užsiėmimai jau praėję = veikla baigta: redaguoti galima tik su leidimu. */
+        const [{ n, last }] = await sql`SELECT count(*)::int AS n, max(d) AS last FROM activity_sessions WHERE activity_id = ${id}`;
+        if (n) needPast(me, last);
       } else {
         requirePerm(me, 'activities.create');
         classId = str(body.classId, 40);
@@ -133,6 +143,7 @@ export default handler(async (req, res, body) => {
           const { from, to } = parseTimes(first);
           const note = str(first.note, 500);
           const dates = expandDates(d, str(first.repeatUntil, 10));
+          needPast(me, dates[0]);
           q.push(sql`INSERT INTO activity_sessions (id, activity_id, d, t_from, t_to, note)
             SELECT * FROM unnest(${dates.map(() => newId('s'))}::text[], ${dates.map(() => nid)}::text[], ${dates}::text[], ${dates.map(() => from)}::text[], ${dates.map(() => to)}::text[], ${dates.map(() => note)}::text[])`);
           details.push(dates.length === 1 ? `Užsiėmimas: ${d}${from ? ' ' + timeOf(from, to) : ''}` : `Užsiėmimų: ${dates.length} (${dates[0]} – ${dates[dates.length - 1]}, kas savaitę)`);
@@ -146,6 +157,8 @@ export default handler(async (req, res, body) => {
     case 'activity-delete': {
       requirePerm(me, 'activities.delete');
       const a = await loadActivity(sql, me, needId(body.id));
+      const [{ first }] = await sql`SELECT min(d) AS first FROM activity_sessions WHERE activity_id = ${a.id}`;
+      needPast(me, first);
       const [{ ns, nr }] = await sql`SELECT (SELECT count(*)::int FROM activity_sessions WHERE activity_id = ${a.id}) AS ns,
         (SELECT count(*)::int FROM activity_records r JOIN activity_sessions s ON s.id = r.session_id WHERE s.activity_id = ${a.id}) AS nr`;
       await sql.transaction([
@@ -168,6 +181,7 @@ export default handler(async (req, res, body) => {
         requirePerm(me, 'activities.edit');
         const [s] = await sql`SELECT id, d FROM activity_sessions WHERE id = ${id} AND activity_id = ${a.id}`;
         if (!s) throw new HttpError(404, 'Užsiėmimas nerastas.');
+        needPast(me, s.d); needPast(me, d);
         await sql.transaction([
           sql`UPDATE activity_sessions SET d = ${d}, t_from = ${from}, t_to = ${to}, note = ${note} WHERE id = ${id}`,
           logQ(sql, me, 'activities', `Veikla „${a.name}“: pakeistas užsiėmimas ${s.d !== d ? s.d + ' → ' : ''}${label}`, note ? [`Aprašymas: ${note}`] : [], null),
@@ -175,6 +189,7 @@ export default handler(async (req, res, body) => {
       } else {
         requirePerm(me, 'activities.create', 'activities.edit');
         const dates = expandDates(d, str(body.repeatUntil, 10));
+        needPast(me, dates[0]);
         await sql.transaction([
           sql`INSERT INTO activity_sessions (id, activity_id, d, t_from, t_to, note)
             SELECT * FROM unnest(${dates.map(() => newId('s'))}::text[], ${dates.map(() => a.id)}::text[], ${dates}::text[], ${dates.map(() => from)}::text[], ${dates.map(() => to)}::text[], ${dates.map(() => note)}::text[])`,
@@ -190,6 +205,7 @@ export default handler(async (req, res, body) => {
       const sid = needId(body.id);
       const [s] = await sql`SELECT s.id, s.d, s.t_from, s.t_to, s.activity_id FROM activity_sessions s WHERE s.id = ${sid}`;
       if (!s) return snapshot(sql, me);
+      needPast(me, s.d);
       const a = await loadActivity(sql, me, s.activity_id);
       const [{ n }] = await sql`SELECT count(*)::int AS n FROM activity_records WHERE session_id = ${sid}`;
       await sql.transaction([
@@ -207,6 +223,7 @@ export default handler(async (req, res, body) => {
         FROM activity_sessions s JOIN activities a ON a.id = s.activity_id JOIN classes c ON c.id = a.class_id WHERE s.id = ${ssid}`;
       if (!s) throw new HttpError(404, 'Užsiėmimas nerastas.');
       if (!seesClass(me, s.cid)) throw new HttpError(403, 'Neturite prieigos prie šio komiteto.');
+      needPast(me, s.d);
       const raw = arr(body.marks);
       if (raw.length > MAX_MARKS) throw new HttpError(400, 'Per daug pakeitimų vienu metu.');
       const marks = [...new Map(raw.map((x) => {

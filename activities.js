@@ -139,17 +139,22 @@ const Acts = (() => {
     const sess = sessionsOf(a.id).slice().sort((x, y) => y.d.localeCompare(x.d) || (y.from || '').localeCompare(x.from || ''));
     const ppl = participants(a);
     const shown = more.has(a.id) ? sess : sess.slice(0, 8);
+    /* Praėjusios veiklos keisti / trinti negalima be leidimo „activities.past“. */
+    const canPast = Auth.can('activities.past');
+    const hasPast = !canPast && sess.some((s) => s.d < t);
+    const pastLockAct = !canPast && sess.length > 0 && sess.every((s) => s.d < t);
     const rows = shown.map((s) => {
       const m = rec.get(s.id);
       let marked = 0;
       if (m) ppl.forEach((p) => { const r = m.get(p.id); if (r && r.s) marked++; });
       const tag = s.d === t ? ' <span class="rate good">šiandien</span>' : s.d > t ? ' <span class="rate na">būsimas</span>' : '';
+      const locked = s.d < t && !Auth.can('activities.past');
       return `<tr><td class="nowrap"><b>${esc(s.d)}</b>${tag}</td><td class="nowrap">${esc(hhmm(s) || '–')}</td><td>${esc(s.note || '')}</td><td class="num">${marked}/${ppl.length}</td>
-        <td class="row-actions"><button class="btn small primary" data-act="sess-mark" data-ssid="${s.id}">Žymėti</button> <button class="btn small" data-act="sess-edit" data-aid="${a.id}" data-ssid="${s.id}">Redaguoti</button> <button class="btn small danger" data-act="sess-del" data-ssid="${s.id}">Ištrinti</button></td></tr>`;
+        <td class="row-actions"><button class="btn small primary" data-act="sess-mark" data-ssid="${s.id}">${locked ? 'Peržiūrėti' : 'Žymėti'}</button>${locked ? '' : ` <button class="btn small" data-act="sess-edit" data-aid="${a.id}" data-ssid="${s.id}">Redaguoti</button> <button class="btn small danger" data-act="sess-del" data-ssid="${s.id}">Ištrinti</button>`}</td></tr>`;
     }).join('');
     return `<div class="card act-card">
       <div class="act-head"><div><h2>${esc(a.name)}</h2><p class="sub" style="margin:0">${[a.teacherName ? 'Atsakingas: ' + esc(a.teacherName) : '', a.place ? 'Vieta: ' + esc(a.place) : ''].filter(Boolean).join(' · ') || '&nbsp;'}</p></div>
-        <div class="actions"><button class="btn small" data-act="act-report" data-aid="${a.id}">${ICON.chart} Ataskaita</button><button class="btn small" data-act="act-edit" data-aid="${a.id}">Redaguoti</button><button class="btn small" data-act="sess-new" data-aid="${a.id}">${ICON.plus} Užsiėmimas</button><button class="btn small danger" data-act="act-del" data-aid="${a.id}">Ištrinti</button></div></div>
+        <div class="actions"><button class="btn small" data-act="act-report" data-aid="${a.id}">${ICON.chart} Ataskaita</button>${pastLockAct ? '' : `<button class="btn small" data-act="act-edit" data-aid="${a.id}">Redaguoti</button>`}<button class="btn small" data-act="sess-new" data-aid="${a.id}">${ICON.plus} Užsiėmimas</button>${hasPast ? '' : `<button class="btn small danger" data-act="act-del" data-aid="${a.id}">Ištrinti</button>`}</div></div>
       ${a.description ? `<p class="act-desc">${esc(a.description)}</p>` : ''}
       <div class="act-meta"><span class="chip">${a.studentIds.length ? 'Dalyviai: ' + ppl.length : 'Visi komiteto mokiniai: ' + ppl.length}</span><span class="chip">Užsiėmimų: ${sess.length}</span></div>
       ${sess.length ? `<div class="table-wrap"><table><thead><tr><th>Data</th><th>Laikas</th><th>Aprašymas</th><th class="num">Pažymėta</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
@@ -255,7 +260,7 @@ const Acts = (() => {
         <label class="check"><input type="radio" name="pm" value="some" ${some ? 'checked' : ''}> Tik pasirinkti dalyviai</label>
         <fieldset class="classpick" id="actPartPick" style="${some ? '' : 'display:none'}"><legend>Dalyviai</legend>${UI.filterBox({ scope: '#actPartPick', rows: 'label.check', placeholder: 'Ieškoti mokinio…' })}${partList(cid, edit ? a.studentIds : [])}</fieldset>
         ${edit ? '' : `<fieldset class="classpick" style="max-height:none"><legend>Pirmas užsiėmimas (neprivaloma)</legend>
-          <div class="grid2"><label>Data<input type="date" name="d" value="${esc(dateHint || attDate)}"></label><label>Kartoti kas savaitę iki<input type="date" name="repeatUntil"></label></div>
+          <div class="grid2"><label>Data<input type="date" name="d" value="${esc(dateHint || attDate)}" ${Auth.can('activities.past') ? '' : `min="${today()}"`}></label><label>Kartoti kas savaitę iki<input type="date" name="repeatUntil"></label></div>
           <div class="grid2"><label>Nuo<input type="time" name="from"></label><label>Iki<input type="time" name="to"></label></div>
           <label>Užsiėmimo aprašymas<input name="note" maxlength="500" placeholder="pvz. Repetuojame koncertui"></label>
         </fieldset>`}
@@ -271,7 +276,7 @@ const Acts = (() => {
     dlg.innerHTML = `<div class="dlg"><div class="dlg-head"><h3>${edit ? 'Redaguoti užsiėmimą' : 'Naujas užsiėmimas'}</h3><button type="button" class="icon-btn" data-act="act-close" aria-label="Uždaryti">&times;</button></div>
       <p class="muted" style="margin-top:0">${esc(a.name)}</p>
       <form data-aform="session"><input type="hidden" name="activityId" value="${a.id}"><input type="hidden" name="id" value="${edit ? s.id : ''}">
-        <label>Data<input type="date" name="d" required value="${esc(edit ? s.d : today())}"></label>
+        <label>Data<input type="date" name="d" required value="${esc(edit ? s.d : today())}" ${Auth.can('activities.past') ? '' : `min="${today()}"`}></label>
         <div class="grid2"><label>Nuo<input type="time" name="from" value="${esc(edit ? s.from : '')}"></label><label>Iki<input type="time" name="to" value="${esc(edit ? s.to : '')}"></label></div>
         <label>Aprašymas (neprivaloma)<textarea name="note" rows="3" maxlength="500">${esc(edit ? s.note : '')}</textarea></label>
         ${edit ? '' : '<label>Kartoti kas savaitę iki (neprivaloma)<input type="date" name="repeatUntil"></label>'}
