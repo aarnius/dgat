@@ -402,6 +402,7 @@ function head(title, sub, actions) {
 
 function render() {
   if (!Auth.user()) { Auth.renderAuth(); return; }
+  if (Auth.user().mustChange) { Auth.renderForceChange(); return; }
   document.body.classList.remove('auth-mode');
   if (!Auth.can(VIEW_PERM[view])) {
     const ok = Object.keys(VIEW_PERM).find((k) => Auth.can(VIEW_PERM[k]));

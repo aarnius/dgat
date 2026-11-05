@@ -1,8 +1,18 @@
-import { db, handler, HttpError, getUser, can, requireUser, requirePerm, hashPw, newId, USERNAME_RE, str, BUILTIN_PERMS, logEvent } from '../lib/server.js';
+import { db, handler, HttpError, getUser, can, requireUser, requirePerm, hashPw, newId, USERNAME_RE, str, BUILTIN_PERMS, logEvent, assertPassword, genPassword } from '../lib/server.js';
+import { transport, sendMail } from '../lib/mail.js';
+
+const EMAIL_RE = /^[^\s@<>()",;:]+@[^\s@<>()",;:]+\.[^\s@<>()",;:]+$/;
+
+/* Prisijungimo duomenų laiškas naujam / atnaujintam vartotojui. */
+async function mailCredentials(req, to, name, username, password, why) {
+  const base = process.env.PUBLIC_URL || `https://${req.headers['x-forwarded-host'] || req.headers.host}`;
+  const text = `Sveiki, ${name},\n\n${why}\n\nPrisijungimo adresas: ${base.replace(/\/$/, '')}/zurnalas\nVartotojo vardas: ${username}\nLaikinas slaptažodis: ${password}\n\nPrisijungę būsite paprašyti iškart susikurti savo slaptažodį (bent 12 simbolių). Laikinas slaptažodis veiks tik šiam pirmam prisijungimui. Niekam jo neperduokite.\n\nJei šio laiško nelaukėte, jo nepaisykite.`;
+  await sendMail(transport(), to, 'Jūsų prisijungimo duomenys', text);
+}
 
 async function snapshot(sql) {
   const [users, roles, customPerms, classes] = await Promise.all([
-    sql`SELECT u.id, u.name, u.username, u.role_id AS "roleId", u.active, u.class_ids AS "classIds", COALESCE(extract(epoch FROM p.updated_at)::bigint, 0) AS photo
+    sql`SELECT u.id, u.name, u.username, u.email, u.must_change AS "mustChange", u.role_id AS "roleId", u.active, u.class_ids AS "classIds", COALESCE(extract(epoch FROM p.updated_at)::bigint, 0) AS photo
       FROM users u LEFT JOIN user_photos p ON p.user_id = u.id ORDER BY u.name`,
     sql`SELECT id, name, system, perms FROM roles ORDER BY system DESC, name`,
     sql`SELECT key, label FROM custom_perms ORDER BY label`,
@@ -29,8 +39,14 @@ export default handler(async (req, res, body) => {
       if (!name || !USERNAME_RE.test(username)) throw new HttpError(400, 'Įveskite vardą ir vartotojo vardą (bent 3 simboliai, be tarpų).');
       const [role] = await sql`SELECT id, name FROM roles WHERE id = ${roleId}`;
       if (!role) throw new HttpError(400, 'Pasirinkite rolę.');
-      if (!id && pw.length < 8) throw new HttpError(400, 'Slaptažodis turi būti bent 8 simbolių.');
-      if (id && pw && pw.length < 8) throw new HttpError(400, 'Slaptažodis per trumpas (bent 8 simboliai).');
+      const email = str(body.email, 120).toLowerCase();
+      if (email && !EMAIL_RE.test(email)) throw new HttpError(400, 'Netinkamas el. pašto adresas.');
+      if (!id && !pw) throw new HttpError(400, 'Įveskite arba sugeneruokite slaptažodį.');
+      if (pw) assertPassword(pw, { username, name, email });
+      const sendInvite = body.sendInvite === true;
+      if (sendInvite && (!email || !pw)) throw new HttpError(400, 'Laiškui išsiųsti reikia el. pašto ir slaptažodžio.');
+      /* Naujam vartotojui ir kai administratorius nustato kitam slaptažodį – pagal nutylėjimą privaloma jį pakeisti. */
+      const mustChange = pw ? body.mustChange !== false : null;
       const [dupe] = await sql`SELECT id FROM users WHERE username = ${username} AND id <> ${id}`;
       if (dupe) throw new HttpError(400, 'Toks vartotojo vardas jau naudojamas.');
       let existing = null;
@@ -48,16 +64,55 @@ export default handler(async (req, res, body) => {
         classIds = (await sql`SELECT id FROM classes WHERE id = ANY(${want}::text[])`).map((x) => x.id);
       }
       const info = [`Rolė: ${role.name}`, active ? 'Paskyra aktyvi' : 'Paskyra išjungta'];
-      if (pw) info.push('Nustatytas naujas slaptažodis');
+      if (pw) info.push('Nustatytas naujas slaptažodis', mustChange ? 'Privalo pakeisti slaptažodį' : 'Slaptažodžio keisti neprivaloma');
+      if (sendInvite) info.push('Išsiųsti prisijungimo duomenys: ' + email);
       await logEvent(sql, me, 'admin', `Vartotojas „${name}“ (${username}) ${existing ? 'atnaujintas' : 'sukurtas'}`, info);
       if (existing) {
-        await sql`UPDATE users SET name=${name}, username=${username}, role_id=${roleId}, active=${active} WHERE id=${id}`;
-        if (pw) await sql`UPDATE users SET pw=${await hashPw(pw)} WHERE id=${id}`;
+        await sql`UPDATE users SET name=${name}, username=${username}, email=${email}, role_id=${roleId}, active=${active} WHERE id=${id}`;
+        if (pw) await sql`UPDATE users SET pw=${await hashPw(pw)}, must_change=${mustChange}, pw_changed_at=NULL WHERE id=${id}`;
         if (classIds) await sql`UPDATE users SET class_ids=${JSON.stringify(classIds)}::jsonb WHERE id=${id}`;
       } else {
-        await sql`INSERT INTO users (id, name, username, role_id, active, pw, class_ids) VALUES (${newId('u')}, ${name}, ${username}, ${roleId}, ${active}, ${await hashPw(pw)}, ${JSON.stringify(classIds || [])}::jsonb)`;
+        await sql`INSERT INTO users (id, name, username, email, role_id, active, pw, must_change, class_ids) VALUES (${newId('u')}, ${name}, ${username}, ${email}, ${roleId}, ${active}, ${await hashPw(pw)}, ${mustChange}, ${JSON.stringify(classIds || [])}::jsonb)`;
       }
+      const snap = await snapshot(sql);
+      if (sendInvite) {
+        try { await mailCredentials(req, email, name, username, pw, existing ? 'Jums nustatytas naujas slaptažodis.' : 'Jums sukurta paskyra Dariaus Girėno gimnazijos mokinių tarybos lankomumo sistemoje.'); snap.invite = { sent: email }; }
+        catch (e) { console.error('invite mail', e.message); snap.invite = { error: e.message || 'Nepavyko išsiųsti laiško.' }; }
+      }
+      return snap;
+    }
+
+    /* Priversti vartotoją pakeisti slaptažodį kitą kartą prisijungus (arba atšaukti). */
+    case 'user-force-change': {
+      requirePerm(me, 'users.manage');
+      const id = str(body.id, 40), on = body.on !== false;
+      const [u] = await sql`SELECT id, name, username, role_id FROM users WHERE id = ${id}`;
+      if (!u) throw new HttpError(404, 'Vartotojas nerastas.');
+      if (u.role_id === 'superadmin' && !isSuper) throw new HttpError(403, 'Tik superadministratorius gali valdyti superadministratorius.');
+      await sql`UPDATE users SET must_change = ${on} WHERE id = ${id}`;
+      await logEvent(sql, me, 'admin', `${on ? 'Reikalaujama pakeisti' : 'Nebereikalaujama keisti'} slaptažodį: „${u.name}“ (${u.username})`);
       return snapshot(sql);
+    }
+
+    /* Sugeneruoti naują laikiną slaptažodį: išsiunčiamas laišku (jei yra el. paštas) arba parodomas administratoriui vieną kartą. */
+    case 'user-temp-password': {
+      requirePerm(me, 'users.manage');
+      const id = str(body.id, 40);
+      const [u] = await sql`SELECT id, name, username, email, role_id FROM users WHERE id = ${id}`;
+      if (!u) throw new HttpError(404, 'Vartotojas nerastas.');
+      if (u.role_id === 'superadmin' && !isSuper) throw new HttpError(403, 'Tik superadministratorius gali valdyti superadministratorius.');
+      if (id === me.id) throw new HttpError(400, 'Savo slaptažodį keiskite skiltyje „Mano paskyra“.');
+      const tmp = genPassword();
+      const toMail = body.send !== false && EMAIL_RE.test(u.email || '');
+      if (toMail) transport();               /* anksti patikriname SMTP, kad nepakeistume slaptažodžio veltui */
+      await sql`UPDATE users SET pw = ${await hashPw(tmp)}, must_change = true, pw_changed_at = NULL WHERE id = ${id}`;
+      await logEvent(sql, me, 'admin', `Sugeneruotas laikinas slaptažodis: „${u.name}“ (${u.username})`, [toMail ? 'Išsiųstas į ' + u.email : 'Parodytas administratoriui']);
+      const snap = await snapshot(sql);
+      if (toMail) {
+        try { await mailCredentials(req, u.email, u.name, u.username, tmp, 'Administratorius nustatė jums naują laikiną slaptažodį.'); snap.invite = { sent: u.email }; }
+        catch (e) { console.error('temp mail', e.message); snap.invite = { error: e.message || 'Nepavyko išsiųsti laiško.' }; snap.temp = { username: u.username, password: tmp }; }
+      } else snap.temp = { username: u.username, password: tmp };
+      return snap;
     }
 
     case 'user-delete': {
