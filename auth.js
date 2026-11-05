@@ -137,9 +137,10 @@ const Auth = (() => {
       <p class="muted">${esc(me.name)}, prisijungėte su laikinu slaptažodžiu. Prieš tęsdami susikurkite savo slaptažodį.</p>
       <form data-form="forcepw" class="dlg" style="padding:0">
         <label>Laikinas (dabartinis) slaptažodis<input name="current" type="password" required autocomplete="current-password"></label>
+        ${me.email ? '' : '<label>Jūsų el. paštas (privalomas – čia siunčiami prisijungimo duomenys)<input name="email" type="email" required autocomplete="email" autocapitalize="none" spellcheck="false"></label>'}
         <label>Naujas slaptažodis<input name="password" type="password" required autocomplete="new-password"></label>
         <label>Pakartokite naują slaptažodį<input name="password2" type="password" required autocomplete="new-password"></label>
-        <input type="hidden" name="username" value="${esc(me.username)}"><input type="hidden" name="name" value="${esc(me.name)}"><input type="hidden" name="email" value="${esc(me.email || '')}">
+        <input type="hidden" name="username" value="${esc(me.username)}"><input type="hidden" name="name" value="${esc(me.name)}">${me.email ? `<input type="hidden" name="email" value="${esc(me.email)}">` : ''}
         ${pwHint()}
         <div class="form-err" role="alert"></div>
         <button type="submit" class="btn primary block">Išsaugoti ir tęsti</button>
@@ -218,7 +219,7 @@ const Auth = (() => {
         <label>Vardas ir pavardė<input name="name" required value="${esc(edit ? u.name : '')}"></label>
         <label>Vartotojo vardas (prisijungimui)<input name="username" required autocapitalize="none" spellcheck="false" value="${esc(edit ? u.username : '')}"></label>
         <label>Rolė<select name="roleId">${admin.roles.map((r) => `<option value="${r.id}" ${edit && u.roleId === r.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select></label>
-        <label>El. paštas (nebūtina – prisijungimo duomenims išsiųsti)<input name="email" type="email" autocapitalize="none" spellcheck="false" autocomplete="off" value="${esc(edit ? u.email || '' : '')}"></label>
+        <label>El. paštas (kur išsiųsti prisijungimo duomenis)<input name="email" type="email" autocapitalize="none" spellcheck="false" autocomplete="off" value="${esc(edit ? u.email || '' : '')}"></label>
         <label>${edit ? 'Naujas slaptažodis (palikite tuščią, jei nekeičiate)' : 'Laikinas slaptažodis'}<span class="pw-row"><input name="password" type="password" autocomplete="new-password" ${edit ? '' : 'required'}><button type="button" class="btn small" data-act="gen-pw">Sugeneruoti</button></span></label>
         ${pwHint()}
         <label class="check"><input type="checkbox" name="mustChange" checked> Priversti pakeisti slaptažodį pirmą kartą prisijungus</label>
@@ -241,6 +242,7 @@ const Auth = (() => {
           <button type="button" class="btn small" data-act="my-photo-pick" style="margin-top:6px">Pasirinkti</button>${me.photo ? ' <button type="button" class="btn small danger" data-act="my-photo-del" style="margin-top:6px">Pašalinti</button>' : ''}</div></div>
         <label>Vardas ir pavardė<input name="name" required value="${esc(me.name)}"></label>
         <label>Vartotojo vardas (prisijungimui)<input name="username" required autocapitalize="none" spellcheck="false" value="${esc(me.username)}"></label>
+        <label>El. paštas<input name="email" type="email" autocapitalize="none" spellcheck="false" value="${esc(me.email || '')}" placeholder="vardas@pastas.lt"></label>
         <label>Dabartinis slaptažodis (jei keičiate)<input name="current" type="password" autocomplete="current-password"></label>
         <label>Naujas slaptažodis<input name="password" type="password" autocomplete="new-password"></label>
         ${pwHint()}
@@ -352,15 +354,16 @@ const Auth = (() => {
       } else if (kind === 'forcepw') {
         if (v('password') !== v('password2')) return err('Slaptažodžiai nesutampa.');
         { const bad = pwIssues(v('password'), { username: v('username'), name: v('name'), email: v('email') }); if (bad.length) return err('Slaptažodis per silpnas: ' + bad.join('; ') + '.'); }
-        const r = await api('/api/auth', { action: 'change-password', current: v('current'), password: v('password') });
+        const r = await api('/api/auth', { action: 'change-password', current: v('current'), password: v('password'), email: v('email') });
         me = r.user; await Sync.pull(); await Sync.migrateLegacy(); render(); toast('Slaptažodis pakeistas');
       } else if (kind === 'user') {
+        if (f.elements.sendInvite.checked && v('password') && !v('email')) return err('Įveskite el. paštą, į kurį išsiųsti prisijungimo duomenis (arba nuimkite laiško siuntimą).');
         { const pw = v('password'); if (pw) { const bad = pwIssues(pw, { username: v('username').toLowerCase(), name: v('name'), email: v('email') }); if (bad.length) return err('Slaptažodis per silpnas: ' + bad.join('; ') + '.'); } }
         admin = await api('/api/admin', { action: 'user-save', id: v('id'), name: v('name'), username: v('username'), email: v('email'), roleId: v('roleId'), password: v('password'), mustChange: f.elements.mustChange.checked, sendInvite: f.elements.sendInvite.checked && !!v('password'), active: f.elements.active.checked, active: f.elements.active.checked, classIds: f.querySelector('.classpick') ? [...f.querySelectorAll('input[name=cls]:checked')].map((x) => x.value) : undefined });
         await refreshMe(); dlg.close(); render(); toast(admin.invite ? (admin.invite.sent ? 'Vartotojas išsaugotas, laiškas išsiųstas: ' + admin.invite.sent : 'Vartotojas išsaugotas, bet laiško išsiųsti nepavyko: ' + admin.invite.error) : 'Vartotojas išsaugotas');
       } else if (kind === 'account') {
         { const pw = v('password'); if (pw) { const bad = pwIssues(pw, { username: v('username').toLowerCase(), name: v('name'), email: me.email }); if (bad.length) return err('Slaptažodis per silpnas: ' + bad.join('; ') + '.'); } }
-        const r = await api('/api/auth', { action: 'account', name: v('name'), username: v('username'), current: v('current'), password: v('password') });
+        const r = await api('/api/auth', { action: 'account', name: v('name'), username: v('username'), email: v('email'), current: v('current'), password: v('password') });
         me = r.user; dlg.close(); render(); toast('Paskyra atnaujinta');
       }
     } catch (ex) { err(ex.message); }

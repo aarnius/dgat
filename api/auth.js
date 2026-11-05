@@ -1,5 +1,7 @@
 import { db, handler, HttpError, getUser, userById, publicUser, withPhoto, hashPw, checkPw, DUMMY_PW, sessionCookie, clearCookie, requireUser, newId, USERNAME_RE, str, logEvent, assertPassword } from '../lib/server.js';
 
+const EMAIL_RE = /^[^\s@<>()",;:]+@[^\s@<>()",;:]+\.[^\s@<>()",;:]+$/;
+
 export default handler(async (req, res, body) => {
   const sql = db();
   if (req.method === 'GET') {
@@ -55,6 +57,8 @@ export default handler(async (req, res, body) => {
       const me = requireUser(await getUser(req), true);
       const name = str(body.name, 100), pw = String(body.password || '');
       const username = str(body.username, 40).toLowerCase() || me.username;
+      const email = body.email === undefined ? me.email : str(body.email, 120).toLowerCase();
+      if (email && !EMAIL_RE.test(email)) throw new HttpError(400, 'Netinkamas el. pašto adresas.');
       if (!name) throw new HttpError(400, 'Įveskite vardą.');
       if (!USERNAME_RE.test(username)) throw new HttpError(400, 'Vartotojo vardas: bent 3 simboliai, be tarpų.');
       const [dupe] = await sql`SELECT id FROM users WHERE username = ${username} AND id <> ${me.id}`;
@@ -64,9 +68,9 @@ export default handler(async (req, res, body) => {
         const [u] = await sql`SELECT pw FROM users WHERE id = ${me.id}`;
         if (!(await checkPw(String(body.current || ''), u.pw))) throw new HttpError(400, 'Dabartinis slaptažodis neteisingas.');
         if (await checkPw(pw, u.pw)) throw new HttpError(400, 'Naujas slaptažodis turi skirtis nuo dabartinio.');
-        await sql`UPDATE users SET name = ${name}, username = ${username}, pw = ${await hashPw(pw)}, must_change = false, pw_changed_at = now() WHERE id = ${me.id}`;
+        await sql`UPDATE users SET name = ${name}, username = ${username}, email = ${email}, pw = ${await hashPw(pw)}, must_change = false, pw_changed_at = now() WHERE id = ${me.id}`;
       } else {
-        await sql`UPDATE users SET name = ${name}, username = ${username} WHERE id = ${me.id}`;
+        await sql`UPDATE users SET name = ${name}, username = ${username}, email = ${email} WHERE id = ${me.id}`;
       }
       await logEvent(sql, me, 'auth', 'Pakeisti savo paskyros duomenys', pw ? ['Pakeistas slaptažodis'] : []);
       return { user: publicUser(await withPhoto(sql, await getUser(req))) };
@@ -76,11 +80,13 @@ export default handler(async (req, res, body) => {
     case 'change-password': {
       const me = requireUser(await getUser(req), true);
       const pw = String(body.password || '');
+      const email = str(body.email, 120).toLowerCase() || me.email;
+      if (!EMAIL_RE.test(email || '')) throw new HttpError(400, 'Įveskite savo el. paštą (reikalingas prisijungimo duomenims ir slaptažodžio atkūrimui).');
       const [u] = await sql`SELECT pw FROM users WHERE id = ${me.id}`;
       if (!(await checkPw(String(body.current || ''), u.pw))) throw new HttpError(400, 'Dabartinis (laikinas) slaptažodis neteisingas.');
-      assertPassword(pw, { username: me.username, name: me.name, email: me.email });
+      assertPassword(pw, { username: me.username, name: me.name, email });
       if (await checkPw(pw, u.pw)) throw new HttpError(400, 'Naujas slaptažodis turi skirtis nuo laikinojo.');
-      await sql`UPDATE users SET pw = ${await hashPw(pw)}, must_change = false, pw_changed_at = now() WHERE id = ${me.id}`;
+      await sql`UPDATE users SET email = ${email}, pw = ${await hashPw(pw)}, must_change = false, pw_changed_at = now() WHERE id = ${me.id}`;
       await logEvent(sql, me, 'auth', 'Pakeistas slaptažodis', [me.mustChange ? 'Privalomas pakeitimas įvykdytas' : 'Savanoriškas pakeitimas']);
       return { user: publicUser(await withPhoto(sql, await getUser(req))) };
     }
