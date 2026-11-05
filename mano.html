@@ -121,7 +121,7 @@
             return '<div class="row"><span class="d">' + esc(dateLt(x.d)) + '</span><span class="t">' + esc(x.c) + (x.a ? '<small>' + esc(x.a) + '</small>' : '') + by + '</span><span class="st" style="--c:' + ST[x.s][1] + '">' + ST[x.s][0] + '</span></div>';
           }).join('') + '</div>' : '<p class="muted" style="margin:0">' + (onlyIssues ? 'Praleidimų nėra. Puiku!' : 'Įrašų dar nėra.') + '</p>') +
           '</div>';
-        h += '<p class="muted" style="text-align:center;font-size:.78rem">Matote tik savo duomenis. Klaidas pranešykite tarybos administratoriui.</p>';
+        h += '<p class="muted" style="text-align:center;font-size:.78rem">Matote tik savo duomenis. Klaidas pranešykite tarybos administratoriui. <a href="/privatumas" style="color:inherit">Privatumo politika</a></p>';
         root.innerHTML = h;
         document.getElementById('logout').onclick = logout;
         var c = document.getElementById('onlyIssues');

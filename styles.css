@@ -579,3 +579,13 @@ table.sheet.fs-l { font-size: 1.05rem; }
 .dnote { width: 100%; resize: vertical; min-height: 120px; }
 @media (max-width: 900px) { .dash-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .dw.w-4 { grid-column: span 2; } }
 @media print { .dash-edit, .dw-ctl { display: none !important; } }
+/* Slaptažodžių taisyklės ir generatorius */
+.pw-row { display: flex; gap: 8px; align-items: center; margin-top: 5px; }
+.pw-row input { flex: 1; margin-top: 0 !important; min-width: 0; }
+.pw-rules { list-style: none; margin: 4px 0 12px; padding: 0; font-size: 0.78rem; color: var(--muted); display: grid; gap: 3px; }
+.pw-rules li.ok { color: var(--p); }
+.pw-rules li.bad { color: var(--a); }
+.temp-pw { margin: 12px 0; padding: 14px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); text-align: center; }
+.temp-pw code { font-size: 1.15rem; font-weight: 700; letter-spacing: 0.04em; user-select: all; word-break: break-all; }
+.legal-links { text-align: center; font-size: 0.78rem; color: var(--muted); margin-top: 12px; }
+.legal-links a { color: inherit; }

@@ -24,9 +24,44 @@ async function api(path, body) {
     const err = new Error((j && j.error) || ('Serverio klaida (' + r.status + ')'));
     err.status = r.status;
     if (r.status === 401 && path !== '/api/auth') Auth.expire();
+    if (r.status === 403 && j && j.mustChange) Auth.forceChange();
     throw err;
   }
   return j;
+}
+
+/* Slaptažodžių politika (BDAR 32 str. – „tinkamos saugumo priemonės“; taikoma pagal NIST SP 800-63B / VDAI rekomendacijas).
+   Dubliuoja serverio lib/server.js passwordIssues – keiskite abi vietas kartu. Serveris visada tikrina iš naujo. */
+const PW_COMMON = ['password', 'passw0rd', 'slaptazodis', 'qwertyuiop', 'qwerty123', 'iloveyou', 'letmein', 'welcome', 'admin123', 'administrator', 'lietuva', 'lankomumas', 'taryba', 'dgtaryba', 'gimnazija', 'mokinys', 'mokytojas', 'abc123', 'monkey', 'dragon', 'football', 'master', 'sunshine'];
+const pwPlain = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+function pwRules(pw, ctx) {
+  ctx = ctx || {};
+  const low = pwPlain(pw);
+  const bits = [ctx.username].concat(String(ctx.name || '').split(/\s+/), String(ctx.email || '').split('@')[0]).map(pwPlain).filter((x) => x.length >= 3);
+  const kinds = [/\p{Ll}/u, /\p{Lu}/u, /\d/, /[^\p{L}\p{N}]/u].filter((r) => r.test(pw)).length;
+  return [
+    ['Bent 12 simbolių', pw.length >= 12],
+    ['Bent 3 iš 4: mažosios, didžiosios, skaičiai, ženklai (arba 16+ simbolių frazė)', pw.length >= 16 || kinds >= 3],
+    ['Be vardo, pavardės, vartotojo vardo ar el. pašto pradžios', !bits.some((b) => low.includes(b))],
+    ['Ne paplitęs žodis ar seka (qwerty, 1234, aaaaa…)', !(PW_COMMON.some((c) => low.includes(c)) || /(.)\1{4,}/.test(pw) || /(?:0123|1234|2345|3456|4567|5678|6789|qwert|asdfg|zxcvb)/.test(low))],
+  ];
+}
+const pwIssues = (pw, ctx) => pwRules(pw, ctx).filter((r) => !r[1]).map((r) => r[0]);
+function pwGenerate() {
+  const sets = ['abcdefghijkmnpqrstuvwxyz', 'ABCDEFGHJKLMNPQRSTUVWXYZ', '23456789', '!@#$%*-_+=?'], all = sets.join('');
+  const rnd = (n) => { const u = new Uint32Array(1); const lim = 4294967296 - (4294967296 % n); do { crypto.getRandomValues(u); } while (u[0] >= lim); return u[0] % n; };
+  const a = sets.map((s) => s[rnd(s.length)]);
+  while (a.length < 16) a.push(all[rnd(all.length)]);
+  for (let i = a.length - 1; i > 0; i--) { const j = rnd(i + 1); [a[i], a[j]] = [a[j], a[i]]; }
+  return a.join('');
+}
+const pwHint = () => '<ul class="pw-rules" data-pwrules></ul>';
+function pwUpdate(form) {
+  const box = form.querySelector('[data-pwrules]'), inp = form.elements.password;
+  if (!box || !inp) return;
+  const get = (n) => (form.elements[n] ? form.elements[n].value : '');
+  const rules = pwRules(inp.value, { username: get('username') || (Auth.user() || {}).username, name: get('name') || (Auth.user() || {}).name, email: get('email') || (Auth.user() || {}).email });
+  box.innerHTML = rules.map((r) => `<li class="${inp.value ? (r[1] ? 'ok' : 'bad') : ''}">${r[1] && inp.value ? '✓' : '○'} ${esc(r[0])}</li>`).join('');
 }
 
 const Auth = (() => {
@@ -50,7 +85,7 @@ const Auth = (() => {
     try {
       const r = await api('/api/auth');
       me = r.user; needsSetup = r.needsSetup;
-      if (me) { await Sync.pull(); await Sync.migrateLegacy(); }
+      if (me && !me.mustChange) { await Sync.pull(); await Sync.migrateLegacy(); }
       return true;
     } catch (e) {
       side.innerHTML = '';
@@ -87,9 +122,39 @@ const Auth = (() => {
         ${first ? '<label>Pakartokite slaptažodį<input name="password2" type="password" required minlength="8" autocomplete="new-password"></label>' : '<label class="check"><input type="checkbox" name="remember"> Likti prisijungus šiame įrenginyje</label>'}
         <div class="form-err" role="alert">${esc(loginMsg)}</div>
         <button type="submit" class="btn primary block">${first ? 'Sukurti paskyrą' : 'Prisijungti'}</button>
-      </form><p class="muted" style="font-size:.75rem;text-align:center;margin:14px 0 0">v. ${typeof APP_VERSION !== 'undefined' ? APP_VERSION : ''}</p></div></div>`;
+      </form><p class="muted" style="font-size:.75rem;text-align:center;margin:14px 0 0">v. ${typeof APP_VERSION !== 'undefined' ? APP_VERSION : ''} · <a href="/privatumas" style="color:inherit">Privatumo politika</a></p></div></div>`;
     loginMsg = '';
     const f = app.querySelector('input'); if (f) f.focus();
+  }
+
+  /* ---------- privalomas slaptažodžio keitimas ---------- */
+  function renderForceChange() {
+    document.body.classList.add('auth-mode');
+    side.innerHTML = '';
+    app.innerHTML = `<div class="login-wrap"><div class="login-card">
+      <span class="logo">${ICON.check}</span>
+      <h1>Susikurkite slaptažodį</h1>
+      <p class="muted">${esc(me.name)}, prisijungėte su laikinu slaptažodžiu. Prieš tęsdami susikurkite savo slaptažodį.</p>
+      <form data-form="forcepw" class="dlg" style="padding:0">
+        <label>Laikinas (dabartinis) slaptažodis<input name="current" type="password" required autocomplete="current-password"></label>
+        ${me.email ? '' : '<label>Jūsų el. paštas (privalomas – čia siunčiami prisijungimo duomenys)<input name="email" type="email" required autocomplete="email" autocapitalize="none" spellcheck="false"></label>'}
+        <label>Naujas slaptažodis<input name="password" type="password" required autocomplete="new-password"></label>
+        <label>Pakartokite naują slaptažodį<input name="password2" type="password" required autocomplete="new-password"></label>
+        <input type="hidden" name="username" value="${esc(me.username)}"><input type="hidden" name="name" value="${esc(me.name)}">${me.email ? `<input type="hidden" name="email" value="${esc(me.email)}">` : ''}
+        ${pwHint()}
+        <div class="form-err" role="alert"></div>
+        <button type="submit" class="btn primary block">Išsaugoti ir tęsti</button>
+        <button type="button" class="btn block" data-act="logout" style="margin-top:8px">Atsijungti</button>
+      </form></div></div>`;
+    pwUpdate(app.querySelector('form'));
+    const f = app.querySelector('input'); if (f) f.focus();
+  }
+  /* Serveris pasakė, kad reikia keisti slaptažodį (pvz. administratorius pareikalavo, kol buvote prisijungę). */
+  function forceChange() {
+    if (!me || me.mustChange) return;
+    me = Object.assign({}, me, { mustChange: true });
+    if (dlg.open) dlg.close();
+    render();
   }
 
   /* ---------- šoninė juosta: vartotojas ---------- */
@@ -115,12 +180,22 @@ const Auth = (() => {
     try {
       admin = await api('/api/admin', body);
       if (await refreshMe()) { /* mano leidimai pasikeitė */ }
-      if (okMsg) toast(okMsg);
+      if (admin.invite) { toast(admin.invite.sent ? 'Laiškas išsiųstas: ' + admin.invite.sent : 'Laiško išsiųsti nepavyko: ' + admin.invite.error); }
+      else if (okMsg) toast(okMsg);
+      if (admin.temp) showTemp(admin.temp);
     } catch (e) {
       toast(e.message);
       try { admin = await api('/api/admin'); } catch (e2) { /* ignore */ }
     }
     render();
+  }
+
+  function showTemp(t) {
+    dlg.innerHTML = `<div class="dlg"><div class="dlg-head"><h3>Laikinas slaptažodis</h3><button type="button" class="icon-btn" data-act="close-auth" aria-label="Uždaryti">&times;</button></div>
+      <p>Vartotojui <b>${esc(t.username)}</b> sugeneruotas laikinas slaptažodis. Jis rodomas tik dabar – perduokite saugiai (ne viešame kanale). Prisijungęs vartotojas privalės iškart susikurti savo slaptažodį.</p>
+      <div class="temp-pw"><code>${esc(t.password)}</code></div>
+      <div class="dlg-actions"><button type="button" class="btn" data-act="copy-temp" data-pw="${esc(t.password)}">Kopijuoti</button><button type="button" class="btn primary" data-act="close-auth">Uždaryti</button></div></div>`;
+    if (!dlg.open) dlg.showModal();
   }
 
   /* ---------- vartotojų puslapis ---------- */
@@ -130,8 +205,8 @@ const Auth = (() => {
       const off = !u.active;
       return `<tr><td><div class="who">${avatar({ first: u.name, uid: u.id, photo: u.photo })}<div><b>${esc(u.name)}</b><small>${esc(u.username)}</small></div></div></td>
         <td>${esc(roleName(u.roleId))}</td>
-        <td class="hide-sm"><span class="rate ${off ? 'low' : 'good'}">${off ? 'Išjungtas' : 'Aktyvus'}</span></td>
-        <td class="row-actions"><button class="btn small" data-act="edit-user" data-uid="${u.id}">Redaguoti</button> <button class="btn small danger" data-act="delete-user" data-uid="${u.id}">Ištrinti</button></td></tr>`;
+        <td class="hide-sm"><span class="rate ${off ? 'low' : 'good'}">${off ? 'Išjungtas' : 'Aktyvus'}</span>${u.mustChange ? ' <span class="rate mid" title="Prisijungęs privalės pakeisti slaptažodį">Turi pakeisti slaptažodį</span>' : ''}</td>
+        <td class="row-actions"><button class="btn small" data-act="edit-user" data-uid="${u.id}">Redaguoti</button> ${u.id === me.id ? '' : `<button class="btn small" data-act="force-pw" data-uid="${u.id}" title="${u.mustChange ? 'Atšaukti reikalavimą pakeisti slaptažodį' : 'Vartotojas privalės pakeisti slaptažodį kitą kartą jam atidarius sistemą'}">${u.mustChange ? 'Atšaukti keitimą' : 'Priversti keisti'}</button> <button class="btn small" data-act="temp-pw" data-uid="${u.id}" title="Sugeneruoti naują laikiną slaptažodį${u.email ? ' ir išsiųsti laišku' : ''}">Naujas laikinas</button> `}<button class="btn small danger" data-act="delete-user" data-uid="${u.id}">Ištrinti</button></td></tr>`;
     }).join('');
     app.innerHTML = head('Vartotojai', 'Kas gali prisijungti ir kokia jų rolė',
       `<button class="btn primary" data-act="add-user">${ICON.plus} Pridėti vartotoją</button>`) +
@@ -144,7 +219,11 @@ const Auth = (() => {
         <label>Vardas ir pavardė<input name="name" required value="${esc(edit ? u.name : '')}"></label>
         <label>Vartotojo vardas (prisijungimui)<input name="username" required autocapitalize="none" spellcheck="false" value="${esc(edit ? u.username : '')}"></label>
         <label>Rolė<select name="roleId">${admin.roles.map((r) => `<option value="${r.id}" ${edit && u.roleId === r.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select></label>
-        <label>${edit ? 'Naujas slaptažodis (palikite tuščią, jei nekeičiate)' : 'Slaptažodis (bent 8 simboliai)'}<input name="password" type="password" autocomplete="new-password" ${edit ? '' : 'required minlength="8"'}></label>
+        <label>El. paštas (kur išsiųsti prisijungimo duomenis)<input name="email" type="email" autocapitalize="none" spellcheck="false" autocomplete="off" value="${esc(edit ? u.email || '' : '')}"></label>
+        <label>${edit ? 'Naujas slaptažodis (palikite tuščią, jei nekeičiate)' : 'Laikinas slaptažodis'}<span class="pw-row"><input name="password" type="password" autocomplete="new-password" ${edit ? '' : 'required'}><button type="button" class="btn small" data-act="gen-pw">Sugeneruoti</button></span></label>
+        ${pwHint()}
+        <label class="check"><input type="checkbox" name="mustChange" checked> Priversti pakeisti slaptažodį pirmą kartą prisijungus</label>
+        <label class="check"><input type="checkbox" name="sendInvite" ${edit ? '' : 'checked'}> Išsiųsti prisijungimo duomenis laišku (reikia el. pašto ir slaptažodžio)</label>
         <label class="check"><input type="checkbox" name="active" ${!edit || u.active ? 'checked' : ''}> Paskyra aktyvi</label>
         ${me.classIds === null ? `<fieldset class="classpick"><legend>Priskirti komitetai</legend>
           <small class="muted">Taikoma, jei vartotojo rolė neturi leidimo „Matyti visus komitetus“.</small>
@@ -154,6 +233,7 @@ const Auth = (() => {
         <div class="dlg-actions"><button type="button" class="btn" data-act="close-auth">Atšaukti</button><button type="submit" class="btn primary">Išsaugoti</button></div>
       </form></div>`;
     dlg.showModal();
+    pwUpdate(dlg.querySelector('form'));
   }
   function openAccountDialog() {
     dlg.innerHTML = `<div class="dlg"><div class="dlg-head"><h3>Mano paskyra</h3><button type="button" class="icon-btn" data-act="close-auth" aria-label="Uždaryti">&times;</button></div>
@@ -162,12 +242,15 @@ const Auth = (() => {
           <button type="button" class="btn small" data-act="my-photo-pick" style="margin-top:6px">Pasirinkti</button>${me.photo ? ' <button type="button" class="btn small danger" data-act="my-photo-del" style="margin-top:6px">Pašalinti</button>' : ''}</div></div>
         <label>Vardas ir pavardė<input name="name" required value="${esc(me.name)}"></label>
         <label>Vartotojo vardas (prisijungimui)<input name="username" required autocapitalize="none" spellcheck="false" value="${esc(me.username)}"></label>
+        <label>El. paštas<input name="email" type="email" autocapitalize="none" spellcheck="false" value="${esc(me.email || '')}" placeholder="vardas@pastas.lt"></label>
         <label>Dabartinis slaptažodis (jei keičiate)<input name="current" type="password" autocomplete="current-password"></label>
-        <label>Naujas slaptažodis (bent 8 simboliai)<input name="password" type="password" autocomplete="new-password"></label>
+        <label>Naujas slaptažodis<input name="password" type="password" autocomplete="new-password"></label>
+        ${pwHint()}
         <div class="form-err" role="alert"></div>
         <div class="dlg-actions"><button type="button" class="btn" data-act="close-auth">Atšaukti</button><button type="submit" class="btn primary">Išsaugoti</button></div>
       </form></div>`;
     dlg.showModal();
+    pwUpdate(dlg.querySelector('form'));
   }
 
   /* ---------- rolių ir leidimų puslapis ---------- */
@@ -207,6 +290,22 @@ const Auth = (() => {
         api('/api/auth', { action: 'photo-delete' }).then((r) => { me = r.user; toast('Nuotrauka pašalinta'); openAccountDialog(); render(); }).catch((e) => toast(e.message));
         break;
       case 'close-auth': dlg.close(); break;
+      case 'gen-pw': {
+        const f = el.closest('form'), p = f && f.elements.password;
+        if (p) { p.value = pwGenerate(); p.type = 'text'; pwUpdate(f); }
+        break;
+      }
+      case 'copy-temp': navigator.clipboard && navigator.clipboard.writeText(el.dataset.pw).then(() => toast('Nukopijuota')).catch(() => {}); break;
+      case 'force-pw': {
+        const u = admin && admin.users.find((x) => x.id === uid2);
+        if (u) UI.confirm(u.mustChange ? `Atšaukti reikalavimą pakeisti slaptažodį (${u.name})?` : `${u.name} privalės pakeisti slaptažodį. Jei šiuo metu prisijungęs – jam iškart bus parodytas keitimo ekranas. Tęsti?`).then((ok) => { if (ok) adminCall({ action: 'user-force-change', id: u.id, on: !u.mustChange }, u.mustChange ? 'Reikalavimas atšauktas' : 'Vartotojas privalės pakeisti slaptažodį'); });
+        break;
+      }
+      case 'temp-pw': {
+        const u = admin && admin.users.find((x) => x.id === uid2);
+        if (u) UI.confirm(`Sugeneruoti naują laikiną slaptažodį vartotojui ${u.name}? Senasis nustos veikti. ${u.email ? 'Naujas bus išsiųstas į ' + u.email + '.' : 'Jis bus parodytas jums vieną kartą.'}`).then((ok) => { if (ok) adminCall({ action: 'user-temp-password', id: u.id }, 'Laikinas slaptažodis sukurtas'); });
+        break;
+      }
       case 'add-user': if (admin) openUserDialog(null); break;
       case 'edit-user': { const u = admin && admin.users.find((x) => x.id === uid2); if (u) openUserDialog(u); break; }
       case 'delete-user': {
@@ -246,17 +345,25 @@ const Auth = (() => {
     try {
       if (kind === 'login') {
         const r = await api('/api/auth', { action: 'login', username: v('username'), password: v('password'), remember: f.elements.remember.checked });
-        me = r.user; await Sync.pull(); await Sync.migrateLegacy(); render();
+        me = r.user; if (!me.mustChange) { await Sync.pull(); await Sync.migrateLegacy(); } render();
       } else if (kind === 'setup') {
-        if (v('password').length < 8) return err('Slaptažodis per trumpas (bent 8 simboliai).');
+        { const bad = pwIssues(v('password'), { username: v('username'), name: v('name') }); if (bad.length) return err('Slaptažodis per silpnas: ' + bad.join('; ') + '.'); }
         if (v('password') !== v('password2')) return err('Slaptažodžiai nesutampa.');
         const r = await api('/api/auth', { action: 'setup', name: v('name'), username: v('username'), password: v('password') });
         me = r.user; needsSetup = false; await Sync.pull(); await Sync.migrateLegacy(); render();
+      } else if (kind === 'forcepw') {
+        if (v('password') !== v('password2')) return err('Slaptažodžiai nesutampa.');
+        { const bad = pwIssues(v('password'), { username: v('username'), name: v('name'), email: v('email') }); if (bad.length) return err('Slaptažodis per silpnas: ' + bad.join('; ') + '.'); }
+        const r = await api('/api/auth', { action: 'change-password', current: v('current'), password: v('password'), email: v('email') });
+        me = r.user; await Sync.pull(); await Sync.migrateLegacy(); render(); toast('Slaptažodis pakeistas');
       } else if (kind === 'user') {
-        admin = await api('/api/admin', { action: 'user-save', id: v('id'), name: v('name'), username: v('username'), roleId: v('roleId'), password: v('password'), active: f.elements.active.checked, classIds: f.querySelector('.classpick') ? [...f.querySelectorAll('input[name=cls]:checked')].map((x) => x.value) : undefined });
-        await refreshMe(); dlg.close(); render(); toast('Vartotojas išsaugotas');
+        if (f.elements.sendInvite.checked && v('password') && !v('email')) return err('Įveskite el. paštą, į kurį išsiųsti prisijungimo duomenis (arba nuimkite laiško siuntimą).');
+        { const pw = v('password'); if (pw) { const bad = pwIssues(pw, { username: v('username').toLowerCase(), name: v('name'), email: v('email') }); if (bad.length) return err('Slaptažodis per silpnas: ' + bad.join('; ') + '.'); } }
+        admin = await api('/api/admin', { action: 'user-save', id: v('id'), name: v('name'), username: v('username'), email: v('email'), roleId: v('roleId'), password: v('password'), mustChange: f.elements.mustChange.checked, sendInvite: f.elements.sendInvite.checked && !!v('password'), active: f.elements.active.checked, active: f.elements.active.checked, classIds: f.querySelector('.classpick') ? [...f.querySelectorAll('input[name=cls]:checked')].map((x) => x.value) : undefined });
+        await refreshMe(); dlg.close(); render(); toast(admin.invite ? (admin.invite.sent ? 'Vartotojas išsaugotas, laiškas išsiųstas: ' + admin.invite.sent : 'Vartotojas išsaugotas, bet laiško išsiųsti nepavyko: ' + admin.invite.error) : 'Vartotojas išsaugotas');
       } else if (kind === 'account') {
-        const r = await api('/api/auth', { action: 'account', name: v('name'), username: v('username'), current: v('current'), password: v('password') });
+        { const pw = v('password'); if (pw) { const bad = pwIssues(pw, { username: v('username').toLowerCase(), name: v('name'), email: me.email }); if (bad.length) return err('Slaptažodis per silpnas: ' + bad.join('; ') + '.'); } }
+        const r = await api('/api/auth', { action: 'account', name: v('name'), username: v('username'), email: v('email'), current: v('current'), password: v('password') });
         me = r.user; dlg.close(); render(); toast('Paskyra atnaujinta');
       }
     } catch (ex) { err(ex.message); }
@@ -280,6 +387,7 @@ const Auth = (() => {
   });
 
   dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
+  document.addEventListener('input', (e) => { const f = e.target.form; if (f && f.dataset && f.dataset.form && f.querySelector('[data-pwrules]')) pwUpdate(f); });
 
-  return { user, can, init, refreshMe, expire, invalidate, renderAuth, renderUsers, renderRoles, userChip, act };
+  return { user, can, init, refreshMe, expire, invalidate, renderAuth, renderForceChange, forceChange, renderUsers, renderRoles, userChip, act };
 })();
