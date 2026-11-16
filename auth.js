@@ -64,6 +64,37 @@ function pwUpdate(form) {
   box.innerHTML = rules.map((r) => `<li class="${inp.value ? (r[1] ? 'ok' : 'bad') : ''}">${r[1] && inp.value ? '✓' : '○'} ${esc(r[0])}</li>`).join('');
 }
 
+/* ---------- passkey (WebAuthn): prisijungimas kompiuterio / telefono biometrija ---------- */
+const pkOk = () => !!(window.PublicKeyCredential && navigator.credentials && window.isSecureContext);
+const b64uOf = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const b64uTo = (s) => { s = String(s).replace(/-/g, '+').replace(/_/g, '/'); s += '='.repeat((4 - (s.length % 4)) % 4); return Uint8Array.from(atob(s), (ch) => ch.charCodeAt(0)); };
+function pkErr(e) {
+  if (e && (e.name === 'NotAllowedError' || e.name === 'AbortError')) return new Error('Patvirtinimas atšauktas arba baigėsi laikas.');
+  if (e && e.name === 'InvalidStateError') return new Error('Šis įrenginys jau pridėtas.');
+  return e;
+}
+async function pkLogin(remember) {
+  const { token, options } = await api('/api/auth', { action: 'pk-login-options' });
+  let cred;
+  try {
+    cred = await navigator.credentials.get({ publicKey: Object.assign({}, options, { challenge: b64uTo(options.challenge) }) });
+  } catch (e) { throw pkErr(e); }
+  const r = cred.response;
+  return api('/api/auth', { action: 'pk-login-verify', token, remember, id: cred.id, clientDataJSON: b64uOf(r.clientDataJSON), authenticatorData: b64uOf(r.authenticatorData), signature: b64uOf(r.signature) });
+}
+async function pkRegister(name) {
+  const { token, options } = await api('/api/auth', { action: 'pk-reg-options' });
+  let cred;
+  try {
+    cred = await navigator.credentials.create({ publicKey: Object.assign({}, options, {
+      challenge: b64uTo(options.challenge), user: Object.assign({}, options.user, { id: b64uTo(options.user.id) }),
+      excludeCredentials: (options.excludeCredentials || []).map((x) => Object.assign({}, x, { id: b64uTo(x.id) })) }) });
+  } catch (e) { throw pkErr(e); }
+  const r = cred.response;
+  if (!r.getPublicKey || !r.getAuthenticatorData) throw new Error('Ši naršyklė nepalaiko passkey. Atnaujinkite naršyklę.');
+  return api('/api/auth', { action: 'pk-reg-verify', token, name, id: cred.id, clientDataJSON: b64uOf(r.clientDataJSON), authenticatorData: b64uOf(r.getAuthenticatorData()), publicKey: b64uOf(r.getPublicKey()), alg: r.getPublicKeyAlgorithm() });
+}
+
 const Auth = (() => {
   let me = null, needsSetup = false, admin = null, loginMsg = '';
   const dlg = document.createElement('dialog');
@@ -122,6 +153,7 @@ const Auth = (() => {
         ${first ? '<label>Pakartokite slaptažodį<input name="password2" type="password" required minlength="8" autocomplete="new-password"></label>' : '<label class="check"><input type="checkbox" name="remember"> Likti prisijungus šiame įrenginyje</label>'}
         <div class="form-err" role="alert">${esc(loginMsg)}</div>
         <button type="submit" class="btn primary block">${first ? 'Sukurti paskyrą' : 'Prisijungti'}</button>
+        ${!first && pkOk() ? '<div class="or-line"><span>arba</span></div><button type="button" class="btn block" data-act="pk-login">Prisijungti su passkey (biometrija)</button>' : ''}
       </form><p class="muted" style="font-size:.75rem;text-align:center;margin:14px 0 0">v. ${typeof APP_VERSION !== 'undefined' ? APP_VERSION : ''} · <a href="/privatumas" style="color:inherit">Privatumo politika</a></p></div></div>`;
     loginMsg = '';
     const f = app.querySelector('input'); if (f) f.focus();
@@ -240,6 +272,7 @@ const Auth = (() => {
       <form data-form="account">
         <div class="who" style="margin-bottom:14px;gap:14px">${avatar({ first: me.name, uid: me.id, photo: me.photo })}<div><b>Mano nuotrauka</b><small class="muted" style="display:block">Ją mato mokiniai, kuriems pažymite lankomumą</small>
           <button type="button" class="btn small" data-act="my-photo-pick" style="margin-top:6px">Pasirinkti</button>${me.photo ? ' <button type="button" class="btn small danger" data-act="my-photo-del" style="margin-top:6px">Pašalinti</button>' : ''}</div></div>
+        ${pkOk() ? '<fieldset class="classpick" id="pkBox"><legend>Passkey (prisijungimas biometrija)</legend><small class="muted">Prisijunkite pirštų atspaudu, veidu ar kompiuterio PIN – be slaptažodžio.</small><div id="pkList"><small class="muted">Kraunama…</small></div><button type="button" class="btn small" data-act="pk-add" style="margin-top:8px">Pridėti šį įrenginį</button></fieldset>' : ''}
         <label>Vardas ir pavardė<input name="name" required value="${esc(me.name)}"></label>
         <label>Vartotojo vardas (prisijungimui)<input name="username" required autocapitalize="none" spellcheck="false" value="${esc(me.username)}"></label>
         <label>El. paštas<input name="email" type="email" autocapitalize="none" spellcheck="false" value="${esc(me.email || '')}" placeholder="vardas@pastas.lt"></label>
@@ -251,6 +284,11 @@ const Auth = (() => {
       </form></div>`;
     dlg.showModal();
     pwUpdate(dlg.querySelector('form'));
+    if (pkOk()) api('/api/auth', { action: 'pk-list' }).then((r) => pkRender(r.passkeys)).catch(() => {});
+  }
+  function pkRender(list) {
+    const box = document.getElementById('pkList'); if (!box) return;
+    box.innerHTML = list.length ? list.map((k) => `<div class="pk-row"><span><b>${esc(k.name)}</b> <small class="muted">${new Date(k.createdAt).toLocaleDateString('lt-LT')}</small></span><button type="button" class="btn small danger" data-act="pk-del" data-pk="${esc(k.id)}">Pašalinti</button></div>`).join('') : '<small class="muted">Passkey dar nepridėtas.</small>';
   }
 
   /* ---------- rolių ir leidimų puslapis ---------- */
@@ -290,6 +328,25 @@ const Auth = (() => {
         api('/api/auth', { action: 'photo-delete' }).then((r) => { me = r.user; toast('Nuotrauka pašalinta'); openAccountDialog(); render(); }).catch((e) => toast(e.message));
         break;
       case 'close-auth': dlg.close(); break;
+      case 'pk-login': {
+        const f = el.closest('form'), msg = f.querySelector('.form-err');
+        if (msg) msg.textContent = '';
+        pkLogin(!!(f.elements.remember && f.elements.remember.checked)).then(async (r) => {
+          me = r.user; if (!me.mustChange) { await Sync.pull(); await Sync.migrateLegacy(); } render();
+        }).catch((e) => { if (msg) msg.textContent = e.message; });
+        break;
+      }
+      case 'pk-add': {
+        const guess = /Windows/.test(navigator.userAgent) ? 'Windows kompiuteris' : /Mac/.test(navigator.userAgent) ? 'Mac' : /Android/.test(navigator.userAgent) ? 'Android telefonas' : /iPhone|iPad/.test(navigator.userAgent) ? 'iPhone / iPad' : 'Mano įrenginys';
+        UI.prompt('Pridėti passkey', guess, { label: 'Įrenginio pavadinimas', okText: 'Tęsti' }).then((name) => {
+          if (!name) return;
+          return pkRegister(name).then((r) => { pkRender(r.passkeys); toast('Passkey pridėtas'); });
+        }).catch((e) => toast(e.message));
+        break;
+      }
+      case 'pk-del':
+        UI.confirm('Pašalinti šį passkey?').then((ok) => ok && api('/api/auth', { action: 'pk-delete', id: el.dataset.pk }).then((r) => { pkRender(r.passkeys); toast('Passkey pašalintas'); })).catch((e) => toast(e.message));
+        break;
       case 'gen-pw': {
         const f = el.closest('form'), p = f && f.elements.password;
         if (p) { p.value = pwGenerate(); p.type = 'text'; pwUpdate(f); }

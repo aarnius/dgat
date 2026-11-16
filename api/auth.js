@@ -1,4 +1,6 @@
-import { db, handler, HttpError, getUser, userById, publicUser, withPhoto, hashPw, checkPw, DUMMY_PW, sessionCookie, clearCookie, requireUser, newId, USERNAME_RE, str, logEvent, assertPassword } from '../lib/server.js';
+import { db, handler, HttpError, getUser, userById, publicUser, withPhoto, hashPw, checkPw, DUMMY_PW, sessionCookie, clearCookie, requireUser, newId, USERNAME_RE, str, logEvent, assertPassword, makeToken, readToken } from '../lib/server.js';
+import crypto from 'node:crypto';
+import { rpOf, ALGS, verifyRegistration, verifyAssertion } from '../lib/webauthn.js';
 
 const EMAIL_RE = /^[^\s@<>()",;:]+@[^\s@<>()",;:]+\.[^\s@<>()",;:]+$/;
 
@@ -89,6 +91,60 @@ export default handler(async (req, res, body) => {
       await sql`UPDATE users SET email = ${email}, pw = ${await hashPw(pw)}, must_change = false, pw_changed_at = now() WHERE id = ${me.id}`;
       await logEvent(sql, me, 'auth', 'Pakeistas slaptažodis', [me.mustChange ? 'Privalomas pakeitimas įvykdytas' : 'Savanoriškas pakeitimas']);
       return { user: publicUser(await withPhoto(sql, await getUser(req))) };
+    }
+
+    /* ---- Passkey (prisijungimas biometrija) ---- */
+    case 'pk-reg-options': {
+      const me = requireUser(await getUser(req));
+      const rp = rpOf(req);
+      const challenge = crypto.randomBytes(32).toString('base64url');
+      const have = await sql`SELECT id FROM passkeys WHERE user_id = ${me.id}`;
+      return {
+        token: makeToken({ c: challenge, p: 'reg', u: me.id }, 5 * 60000),
+        options: { challenge, rp: { id: rp.id, name: 'Lankomumo žurnalas' },
+          user: { id: Buffer.from(me.id).toString('base64url'), name: me.username, displayName: me.name },
+          pubKeyCredParams: ALGS.map((alg) => ({ type: 'public-key', alg })),
+          authenticatorSelection: { residentKey: 'preferred', userVerification: 'required' },
+          excludeCredentials: have.map((x) => ({ type: 'public-key', id: x.id })), timeout: 60000, attestation: 'none' },
+      };
+    }
+    case 'pk-reg-verify': {
+      const me = requireUser(await getUser(req));
+      const t = readToken(body.token);
+      if (!t || t.p !== 'reg' || t.u !== me.id) throw new HttpError(400, 'Užklausa nebegalioja. Bandykite iš naujo.');
+      const r = verifyRegistration(req, body, t.c);
+      const name = str(body.name, 60) || 'Mano įrenginys';
+      await sql`INSERT INTO passkeys (id, user_id, pub, alg, counter, name) VALUES (${r.id}, ${me.id}, ${r.pub}, ${r.alg}, ${r.counter}, ${name})`;
+      await logEvent(sql, me, 'auth', 'Pridėtas passkey', [name]);
+      return { passkeys: await sql`SELECT id, name, created_at AS "createdAt", last_used AS "lastUsed" FROM passkeys WHERE user_id = ${me.id} ORDER BY created_at` };
+    }
+    case 'pk-list': {
+      const me = requireUser(await getUser(req), true);
+      return { passkeys: await sql`SELECT id, name, created_at AS "createdAt", last_used AS "lastUsed" FROM passkeys WHERE user_id = ${me.id} ORDER BY created_at` };
+    }
+    case 'pk-delete': {
+      const me = requireUser(await getUser(req), true);
+      await sql`DELETE FROM passkeys WHERE id = ${str(body.id, 1024)} AND user_id = ${me.id}`;
+      await logEvent(sql, me, 'auth', 'Pašalintas passkey');
+      return { passkeys: await sql`SELECT id, name, created_at AS "createdAt", last_used AS "lastUsed" FROM passkeys WHERE user_id = ${me.id} ORDER BY created_at` };
+    }
+    case 'pk-login-options': {
+      const rp = rpOf(req);
+      const challenge = crypto.randomBytes(32).toString('base64url');
+      return { token: makeToken({ c: challenge, p: 'login' }, 5 * 60000),
+        options: { challenge, rpId: rp.id, userVerification: 'required', timeout: 60000, allowCredentials: [] } };
+    }
+    case 'pk-login-verify': {
+      const t = readToken(body.token);
+      if (!t || t.p !== 'login') throw new HttpError(400, 'Užklausa nebegalioja. Bandykite iš naujo.');
+      const [row] = await sql`SELECT k.id, k.user_id, k.pub, k.alg, k.counter, u.name, u.active FROM passkeys k JOIN users u ON u.id = k.user_id WHERE k.id = ${str(body.id, 1024)}`;
+      if (!row) throw new HttpError(401, 'Šis passkey nežinomas. Prisijunkite slaptažodžiu ir pridėkite jį skiltyje „Mano paskyra“.');
+      const counter = verifyAssertion(req, body, t.c, row);
+      if (!row.active) { await logEvent(sql, { id: row.user_id, name: row.name }, 'auth', 'Bandymas prisijungti prie išjungtos paskyros (passkey)'); throw new HttpError(403, 'Ši paskyra išjungta.'); }
+      await sql`UPDATE passkeys SET counter = ${counter}, last_used = now() WHERE id = ${row.id}`;
+      res.setHeader('Set-Cookie', sessionCookie(row.user_id, !!body.remember));
+      await logEvent(sql, { id: row.user_id, name: row.name }, 'auth', 'Prisijungė (passkey)');
+      return { user: publicUser(await withPhoto(sql, await userById(row.user_id))) };
     }
 
     /* Savo profilio nuotrauka (matoma kitiems darbuotojams ir mokiniams, kuriems pažymėjote lankomumą). */

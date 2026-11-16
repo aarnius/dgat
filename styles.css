@@ -589,3 +589,8 @@ table.sheet.fs-l { font-size: 1.05rem; }
 .temp-pw code { font-size: 1.15rem; font-weight: 700; letter-spacing: 0.04em; user-select: all; word-break: break-all; }
 .legal-links { text-align: center; font-size: 0.78rem; color: var(--muted); margin-top: 12px; }
 .legal-links a { color: inherit; }
+
+/* Passkey */
+.or-line { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 0.78rem; margin: 12px 0; }
+.or-line::before, .or-line::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.pk-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; }
