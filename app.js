@@ -350,7 +350,7 @@ const ACT_PERM = {
   'open-import': 'students.import', 'do-import': 'students.import', template: 'students.import',
   'export-report': 'reports.export', 'export-all-csv': 'data.backup', 'export-json': 'data.backup',
   'restore-label': 'data.restore', wipe: 'data.wipe',
-  'rename-class-id': 'classes.manage', 'delete-class-id': 'classes.manage', 'open-promote': 'students.edit', 'do-promote': 'students.edit', 'open-bulk': 'students.edit', 'do-bulk': 'students.edit',
+  'rename-class-id': 'classes.manage', 'delete-class-id': 'classes.manage', 'open-promote': 'students.edit', 'do-promote': 'students.edit', 'open-bulk': 'students.edit', 'do-bulk': 'students.edit', 'bulk-delete': 'students.delete', 'delete-student-all': 'students.delete',
   'photo-pick': 'students.photo', 'photo-del': 'students.photo',
   'tool-gsave': 'tools.save', 'tool-gdel': 'tools.save', 'tool-merge': 'students.delete',
   'tool-tpl-new': 'tools.save', 'tool-tpl-update': 'tools.save', 'tool-tpl-rename': 'tools.save', 'tool-tpl-del': 'tools.save',
@@ -495,7 +495,7 @@ function bulkBar() {
   if (!canSel()) return '';
   const ids = new Set(state.students.map((x) => x.id));
   sel = new Set([...sel].filter((id) => ids.has(id)));
-  return `<div class="bulkbar" ${sel.size ? '' : 'hidden'}><span>Pažymėta: <b>${sel.size}</b></span><button class="btn small primary" data-act="open-bulk">Masinis perkėlimas…</button><button class="btn small" data-act="sel-clear">Atžymėti</button></div>`;
+  return `<div class="bulkbar" ${sel.size ? '' : 'hidden'}><span>Pažymėta: <b>${sel.size}</b></span><button class="btn small primary" data-act="open-bulk">Masinis perkėlimas…</button>${Auth.can('students.delete') ? '<button class="btn small danger" data-act="bulk-delete">Ištrinti pažymėtus</button>' : ''}<button class="btn small" data-act="sel-clear">Atžymėti</button></div>`;
 }
 
 function renderStudents() {
@@ -910,7 +910,7 @@ function openCard(id) {
     ${Acts.cardSection(s)}
     <h4 class="card-sec">Praleidimai, vėlavimai ir pastabos</h4>
     ${evRows ? `<div class="table-wrap"><table><thead><tr><th>Data</th><th>Komitetas</th><th>Būsena</th><th>Pastaba</th></tr></thead><tbody>${evRows}</tbody></table></div>${ev.length > 40 ? `<p class="muted" style="font-size:.8rem">Rodoma 40 naujausių iš ${ev.length}.</p>` : ''}` : '<p class="muted">Įrašų nėra.</p>'}
-    <div class="dlg-actions">${Auth.can('students.photo') ? `<button type="button" class="btn" data-act="photo-pick" data-sid="${s.id}">Nuotrauka</button>${window.PHOTOS && window.PHOTOS[s.id] ? `<button type="button" class="btn danger" data-act="photo-del" data-sid="${s.id}">Pašalinti nuotrauką</button>` : ''}` : ''}<button type="button" class="btn" data-act="edit-student" data-sid="${s.id}">Redaguoti</button><button type="button" class="btn primary" data-act="print-card" data-sid="${s.id}">${ICON.print} Spausdinti</button></div></div>`;
+    <div class="dlg-actions">${Auth.can('students.photo') ? `<button type="button" class="btn" data-act="photo-pick" data-sid="${s.id}">Nuotrauka</button>${window.PHOTOS && window.PHOTOS[s.id] ? `<button type="button" class="btn danger" data-act="photo-del" data-sid="${s.id}">Pašalinti nuotrauką</button>` : ''}` : ''}<button type="button" class="btn" data-act="edit-student" data-sid="${s.id}">Redaguoti</button>${Auth.can('students.delete') ? `<button type="button" class="btn danger" data-act="delete-student-all" data-sid="${s.id}">Ištrinti iš visų komitetų</button>` : ''}<button type="button" class="btn primary" data-act="print-card" data-sid="${s.id}">${ICON.print} Spausdinti</button></div></div>`;
   applyPerms();
   cardDlg.showModal();
 }
@@ -1025,6 +1025,26 @@ document.addEventListener('click', async (e) => {
     case 'open-bulk': openBulk(); break;
     case 'do-bulk': doBulk(); break;
     case 'sel-clear': sel.clear(); render(); break;
+    case 'bulk-delete': {
+      const list = state.students.filter((x) => sel.has(x.id));
+      if (!list.length) break;
+      const names = list.slice(0, 5).map(displayName).join(', ') + (list.length > 5 ? ` ir dar ${list.length - 5}` : '');
+      if (!await UI.confirm(`Ištrinti ${list.length} mokinių iš visų komitetų (${names})? Jų lankomumo įrašai taip pat bus pašalinti. Pakeitimą galima atšaukti skiltyje LOG.`)) break;
+      const ids = new Set(list.map((x) => x.id));
+      state.students = state.students.filter((x) => !ids.has(x.id));
+      ids.forEach(wipeStudentRecords);
+      sel.clear(); Sync.tag(`Masiškai ištrinta mokinių: ${ids.size}`); save(); render(); toast(`Ištrinta mokinių: ${ids.size}`);
+      break;
+    }
+    case 'delete-student-all': {
+      const s = state.students.find((x) => x.id === el.dataset.sid);
+      if (!s) break;
+      if (!await UI.confirm(`Ištrinti ${displayName(s)} iš visų komitetų? Jo lankomumo įrašai taip pat bus pašalinti.`)) break;
+      state.students = state.students.filter((x) => x.id !== s.id);
+      wipeStudentRecords(s.id); sel.delete(s.id);
+      Sync.tag(`Ištrintas mokinys „${displayName(s)}“ iš visų komitetų`); save(); cardDlg.close(); render(); toast('Mokinys ištrintas');
+      break;
+    }
     case 'edit-student': if (cardDlg.open) cardDlg.close(); openStudentDialog(state.students.find((s) => s.id === el.dataset.sid)); break;
     case 'close-dialog': dialog.close(); break;
     case 'open-import': openImport(); break;
