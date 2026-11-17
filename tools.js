@@ -247,7 +247,21 @@ const Tools = (() => {
   }
 
   /* ---------- dokumentai: priėmimo, grįžimo, išėjimo, pašalinimo, pokalbio lapai ---------- */
-  const docOpts = () => (s) => ({ date: F.date || today(), coms: s ? (s.classIds || []).map(comName).filter(Boolean).join(', ') : '', rate: s ? statsAll(s).rate : null, author: authorName() });
+  /* Atsisiunčiant ar spausdinant dokumentą numeris priskiriamas automatiškai ir įrašomas į Registrą (tas pats dokumentas pakartotinai numerio negauna). */
+  F.issued = {};
+  const regKey = (s) => [F.doc, F.date || today(), s ? s.id : '', F.blank ? 'b' : ''].join('|');
+  async function ensureNumbers() {
+    if (F.blank || !Auth.can('register.edit')) return;
+    const group = Forms.isGroup(F.doc), list = group ? [null] : docList();
+    const need = list.filter((s) => !F.issued[regKey(s)]);
+    if (!need.length) return;
+    const r = await api('/api/register', { action: 'issue', kind: F.doc, date: F.date || today(), reasons: [], details: '',
+      items: need.map((s) => (s ? { studentId: s.id } : { name: Forms.label(F.doc) + ' – ' + comName(cid()) })) });
+    need.forEach((s, i) => { F.issued[regKey(s)] = r.issued[i].docNo; });
+    toast('Įrašyta į Registrą: ' + need.map((s, i) => r.issued[i].docNo).join(', '));
+    if (window.Reg) Reg.reload();
+  }
+  const docOpts = () => (s) => ({ nr: F.issued[regKey(s)], date: F.date || today(), coms: s ? (s.classIds || []).map(comName).filter(Boolean).join(', ') : '', rate: s ? statsAll(s).rate : null, author: authorName() });
   const authorName = () => { const u = Auth.user(); return u ? u.name + (u.roleName ? ', ' + u.roleName : '') : ''; };
   const docList = () => (F.blank ? [] : pool());
   function renderDocs() {
@@ -271,17 +285,19 @@ const Tools = (() => {
       <label>Data dokumente<input type="date" data-tool="F.date" value="${esc(F.date)}"></label>
       <label class="check"><input type="checkbox" data-tool="F.blank" ${F.blank ? 'checked' : ''}> Tuščias blankas (be mokinio duomenų)</label></div>
       <div class="actions" style="margin-top:12px"><button class="btn primary" data-act="tool-docx" data-t="docs">Atsisiųsti .docx${F.blank || group ? '' : ` (${list.length})`}</button><button class="btn" data-act="tool-doc-print">${ICON.print} Spausdinti</button>${canEdit ? '<button class="btn" data-act="tool-doc-edit">Redaguoti tekstus</button>' : ''}</div>
-      <p class="sub" style="margin:10px 0 0">${F.blank ? 'Bus sukurtas vienas tuščias blankas.' : group ? `Vienas bendras dokumentas; pažymėti mokiniai (${list.length}) įrašomi į dalyvių sąrašą, jei jis numatytas.` : list.length ? `Kiekvienam pažymėtam mokiniui (${list.length}) sukuriamas atskiras lapas su jo vardu, klase ir komitetais. Peržiūra – pirmo sąraše.` : 'Pasirinkite mokinius aukščiau.'} Tekstai bendri visiems komitetams.</p></div></div>
+      <p class="sub" style="margin:10px 0 0">${F.blank ? 'Bus sukurtas vienas tuščias blankas.' : group ? `Vienas bendras dokumentas; pažymėti mokiniai (${list.length}) įrašomi į dalyvių sąrašą, jei jis numatytas.` : list.length ? `Kiekvienam pažymėtam mokiniui (${list.length}) sukuriamas atskiras lapas su jo vardu, klase ir komitetais. Peržiūra – pirmo sąraše.` : 'Pasirinkite mokinius aukščiau.'} Tekstai bendri visiems komitetams.${!F.blank && Auth.can('register.edit') ? ' Atsisiunčiant ar spausdinant numeris priskiriamas automatiškai ir įrašomas į Registrą.' : ''}</p></div></div>
       ${editor}<div class="doc-preview">${list.length || F.blank || group ? preview : '<div class="card"><p class="muted">Mokinių nėra.</p></div>'}</div>`;
   }
   function docBlocks() { const o = docOpts(); return Forms.many(F.doc, docList(), (s) => { const x = o(s); if (!s && Forms.isGroup(F.doc) && !F.blank) x.coms = comName(cid()); return x; }); }
-  function docDocx() {
+  async function docDocx() {
     if (!F.blank && !Forms.isGroup(F.doc) && !docList().length) { toast('Pasirinkite bent vieną mokinį'); return; }
+    try { await ensureNumbers(); } catch (e) { toast('Numerio priskirti nepavyko: ' + e.message); return; }
     Docx.save(`${Forms.label(F.doc)}-${F.date || today()}`, Docx.build(docBlocks(), { size: 10, margin: 1000 }));
     logClient('export-doc', Forms.label(F.doc) + ' ×' + (F.blank ? 1 : docList().length));
   }
-  function docPrint() {
+  async function docPrint() {
     if (!F.blank && !Forms.isGroup(F.doc) && !docList().length) { toast('Pasirinkite bent vieną mokinį'); return; }
+    try { await ensureNumbers(); } catch (e) { toast('Numerio priskirti nepavyko: ' + e.message); return; }
     let box = document.getElementById('printForms');
     if (!box) { box = document.createElement('div'); box.id = 'printForms'; document.body.appendChild(box); }
     box.innerHTML = Forms.html(docBlocks());
