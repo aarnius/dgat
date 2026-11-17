@@ -339,8 +339,8 @@ function planImport(items) {
 }
 
 /* ---------- rendering ---------- */
-const NAV = [['dashboard', 'Apžvalga', ICON.dash], ['attendance', 'Lankomumas', ICON.check], ['activities', 'Veiklos', ICON.cal], ['students', 'Mokiniai', ICON.users], ['allstudents', 'Visi mokiniai', ICON.users], ['classes', 'Komitetai', ICON.book], ['tools', 'Įrankiai', ICON.tools], ['reports', 'Ataskaitos', ICON.chart], ['data', 'Duomenys', ICON.db], ['logs', 'LOG', ICON.log], ['users', 'Vartotojai', ICON.users], ['roles', 'Rolės', ICON.shield]];
-const VIEW_PERM = { dashboard: 'dashboard.view', attendance: 'attendance.view', activities: 'activities.view', students: 'students.view', allstudents: 'students.view', classes: 'classes.manage', reports: 'reports.view', tools: 'tools.view', data: 'data.view', logs: 'logs.view', users: 'users.manage', roles: 'roles.manage' };
+const NAV = [['dashboard', 'Apžvalga', ICON.dash], ['attendance', 'Lankomumas', ICON.check], ['activities', 'Veiklos', ICON.cal], ['students', 'Mokiniai', ICON.users], ['allstudents', 'Visi mokiniai', ICON.users], ['classes', 'Komitetai', ICON.book], ['tools', 'Įrankiai', ICON.tools], ['register', 'Registras', ICON.book], ['reports', 'Ataskaitos', ICON.chart], ['data', 'Duomenys', ICON.db], ['logs', 'LOG', ICON.log], ['users', 'Vartotojai', ICON.users], ['roles', 'Rolės', ICON.shield]];
+const VIEW_PERM = { dashboard: 'dashboard.view', attendance: 'attendance.view', activities: 'activities.view', students: 'students.view', allstudents: 'students.view', classes: 'classes.manage', reports: 'reports.view', tools: 'tools.view', register: 'register.view', data: 'data.view', logs: 'logs.view', users: 'users.manage', roles: 'roles.manage' };
 const ACT_PERM = {
   'new-class': 'classes.manage', 'rename-class': 'classes.manage', 'delete-class': 'classes.manage',
   'act-new': 'activities.create', 'act-new-here': 'activities.create', 'act-edit': 'activities.edit', 'act-del': 'activities.delete', 'sess-new': 'activities.edit', 'sess-edit': 'activities.edit', 'sess-del': 'activities.edit',
@@ -426,7 +426,7 @@ function renderInner() {
       <button class="btn primary" data-act="new-class">${ICON.plus} Sukurti komitetą</button></div>`;
     return;
   }
-  ({ dashboard: renderDashboard, students: renderStudents, allstudents: renderAllStudents, attendance: renderAttendance, activities: Acts.render, tools: Tools.render, reports: renderReports, data: renderData, logs: Logs.render, classes: renderClasses, users: Auth.renderUsers, roles: Auth.renderRoles })[view]();
+  ({ dashboard: renderDashboard, students: renderStudents, allstudents: renderAllStudents, attendance: renderAttendance, activities: Acts.render, tools: Tools.render, register: Reg.render, reports: renderReports, data: renderData, logs: Logs.render, classes: renderClasses, users: Auth.renderUsers, roles: Auth.renderRoles })[view]();
   window.scrollTo(0, y);
 }
 
@@ -908,11 +908,13 @@ function openCard(id) {
     ${coms.length ? `<div class="table-wrap"><table><thead><tr><th>Komitetas</th><th class="num">Dalyvavo</th><th class="num">Nedalyvavo</th><th class="num">Vėlavo</th><th class="num">Pateisinta</th><th class="num">Rodiklis</th></tr></thead><tbody>${comRows}
       ${coms.length > 1 ? `<tr><td><b>Iš viso</b></td><td class="num">${tot.P}</td><td class="num">${tot.A}</td><td class="num">${tot.L}</td><td class="num">${tot.E}</td><td class="num">${rateBadge(tot.rate)}</td></tr>` : ''}</tbody></table></div>` : '<p class="muted">Komitetų nėra.</p>'}
     ${Acts.cardSection(s)}
+    ${Reg.cardSection(s)}
     <h4 class="card-sec">Praleidimai, vėlavimai ir pastabos</h4>
     ${evRows ? `<div class="table-wrap"><table><thead><tr><th>Data</th><th>Komitetas</th><th>Būsena</th><th>Pastaba</th></tr></thead><tbody>${evRows}</tbody></table></div>${ev.length > 40 ? `<p class="muted" style="font-size:.8rem">Rodoma 40 naujausių iš ${ev.length}.</p>` : ''}` : '<p class="muted">Įrašų nėra.</p>'}
     <div class="dlg-actions">${Auth.can('students.photo') ? `<button type="button" class="btn" data-act="photo-pick" data-sid="${s.id}">Nuotrauka</button>${window.PHOTOS && window.PHOTOS[s.id] ? `<button type="button" class="btn danger" data-act="photo-del" data-sid="${s.id}">Pašalinti nuotrauką</button>` : ''}` : ''}<button type="button" class="btn" data-act="edit-student" data-sid="${s.id}">Redaguoti</button>${Auth.can('tools.view') ? `<button type="button" class="btn" data-act="tool-student-docs" data-sid="${s.id}">Dokumentai</button>` : ''}${Auth.can('students.delete') ? `<button type="button" class="btn danger" data-act="delete-student-all" data-sid="${s.id}">Ištrinti iš visų komitetų</button>` : ''}<button type="button" class="btn primary" data-act="print-card" data-sid="${s.id}">${ICON.print} Spausdinti</button></div></div>`;
   applyPerms();
-  cardDlg.showModal();
+  window.__cardId = id;
+  if (!cardDlg.open) cardDlg.showModal();
 }
 
 /* ---------- profilio nuotrauka: pasirinkimas, sumažinimas iki 256×256 (JPEG) ir įkėlimas ---------- */
@@ -1092,7 +1094,7 @@ document.addEventListener('click', async (e) => {
         state = { classes: [], students: [], records: {}, currentClassId: null }; Sync.tag('Ištrinti visi duomenys'); save(); render();
       }
       break;
-    default: if (!Dash.act(act, el) && !Tools.act(act, el) && !Acts.act(act, el) && !Logs.act(act, el) && !Backups.act(act, el)) Auth.act(act, el);
+    default: if (!Dash.act(act, el) && !Tools.act(act, el) && !Reg.act(act, el) && !Acts.act(act, el) && !Logs.act(act, el) && !Backups.act(act, el)) Auth.act(act, el);
   }
 });
 
