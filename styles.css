@@ -594,3 +594,27 @@ table.sheet.fs-l { font-size: 1.05rem; }
 .or-line { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 0.78rem; margin: 12px 0; }
 .or-line::before, .or-line::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .pk-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; }
+
+/* Dokumentų blankai (peržiūra ir spausdinimas) */
+.doc-edit { width: 100%; font: 0.85rem/1.5 ui-monospace, Menlo, Consolas, monospace; padding: 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); color: var(--text); resize: vertical; }
+.form-sheet { background: #fff; color: #111; max-width: 794px; margin: 0 auto 18px; padding: 48px 56px; border-radius: 10px; border: 1px solid var(--line); box-shadow: var(--shadow); font-size: 0.95rem; line-height: 1.5; }
+.form-sheet p { margin: 0 0 7px; }
+.f-title { text-align: center; font-size: 1.1rem; margin: 0 0 6px; text-transform: none; }
+.f-sub { text-align: center; font-weight: 700; font-size: 1rem; margin: 0 0 8px; }
+.f-c { text-align: center; margin: 0 0 2px !important; }
+.f-note { font-size: 0.78rem; color: #555; margin-top: 22px !important; }
+.f-h { font-size: 1.05rem; margin: 18px 0 6px; }
+.f-li { padding-left: 22px; text-indent: -14px; }
+.f-li::before { content: "•  "; }
+.f-sig { margin-top: 26px !important; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; }
+.f-fill { display: inline-block; border-bottom: 1px solid #111; min-width: 140px; flex: 1; }
+.f-fill.s { min-width: 100px; flex: none; width: 100px; }
+.f-date { display: inline-flex; gap: 6px; }
+#printForms { display: none; }
+@media print {
+  body.print-forms > *:not(#printForms) { display: none !important; }
+  body.print-forms #printForms { display: block !important; }
+  body.print-forms .form-sheet { border: 0; box-shadow: none; border-radius: 0; margin: 0; padding: 0; max-width: none; page-break-after: always; break-after: page; }
+  body.print-forms .form-sheet:last-child { page-break-after: auto; break-after: auto; }
+  .doc-preview .form-sheet { border: 0; box-shadow: none; }
+}
