@@ -18,7 +18,7 @@ const Tools = (() => {
   const M = { onlyRisk: false, to: 'student', tplId: '', subject: '', body: '', test: '', busy: false, status: '', bad: false };
   const A = { codes: null, st: 'idle', resend: false, busy: false, status: '', bad: false };
   const ACC_CHUNK = 10;
-  const F = { doc: 'join', date: '', blank: false, edit: false, editDoc: 'join', draft: {}, org: null, busy: false };
+  const F = { reg: true, doc: 'join', date: '', blank: false, edit: false, editDoc: 'join', draft: {}, org: null, busy: false };
   const OBJ = { S, G, D, L, R, X, C, M, A, F };
   let saved = null, savedSt = 'idle', savedErr = '', tpls = [];
   let mailTpls = null, mailTplSt = 'idle', mailFirst = null;
@@ -251,7 +251,7 @@ const Tools = (() => {
   F.issued = {};
   const regKey = (s) => [F.doc, F.date || today(), s ? s.id : '', F.blank ? 'b' : ''].join('|');
   async function ensureNumbers() {
-    if (F.blank || !Auth.can('register.edit')) return;
+    if (F.blank || !F.reg || !Auth.can('register.edit')) return;
     const group = Forms.isGroup(F.doc), list = group ? [null] : docList();
     const need = list.filter((s) => !F.issued[regKey(s)]);
     if (!need.length) return;
@@ -283,9 +283,10 @@ const Tools = (() => {
     return `<div class="no-print">${F.blank ? '' : srcBox()}<div class="card"><div class="tool-opts">
       <label>Dokumentas<select data-tool="F.doc">${Forms.DOCS.map(([k, l]) => `<option value="${k}" ${F.doc === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
       <label>Data dokumente<input type="date" data-tool="F.date" value="${esc(F.date)}"></label>
-      <label class="check"><input type="checkbox" data-tool="F.blank" ${F.blank ? 'checked' : ''}> Tuščias blankas (be mokinio duomenų)</label></div>
+      <label class="check"><input type="checkbox" data-tool="F.blank" ${F.blank ? 'checked' : ''}> Tuščias blankas (be mokinio duomenų)</label>
+      ${Auth.can('register.edit') ? `<label class="check"><input type="checkbox" data-tool="F.reg" ${F.reg ? 'checked' : ''} ${F.blank ? 'disabled' : ''}> Priskirti numerį ir įrašyti į Registrą</label>` : ''}</div>
       <div class="actions" style="margin-top:12px"><button class="btn primary" data-act="tool-docx" data-t="docs">Atsisiųsti .docx${F.blank || group ? '' : ` (${list.length})`}</button><button class="btn" data-act="tool-doc-print">${ICON.print} Spausdinti</button>${canEdit ? '<button class="btn" data-act="tool-doc-edit">Redaguoti tekstus</button>' : ''}</div>
-      <p class="sub" style="margin:10px 0 0">${F.blank ? 'Bus sukurtas vienas tuščias blankas.' : group ? `Vienas bendras dokumentas; pažymėti mokiniai (${list.length}) įrašomi į dalyvių sąrašą, jei jis numatytas.` : list.length ? `Kiekvienam pažymėtam mokiniui (${list.length}) sukuriamas atskiras lapas su jo vardu, klase ir komitetais. Peržiūra – pirmo sąraše.` : 'Pasirinkite mokinius aukščiau.'} Tekstai bendri visiems komitetams.${!F.blank && Auth.can('register.edit') ? ' Atsisiunčiant ar spausdinant numeris priskiriamas automatiškai ir įrašomas į Registrą.' : ''}</p></div></div>
+      <p class="sub" style="margin:10px 0 0">${F.blank ? 'Bus sukurtas vienas tuščias blankas.' : group ? `Vienas bendras dokumentas; pažymėti mokiniai (${list.length}) įrašomi į dalyvių sąrašą, jei jis numatytas.` : list.length ? `Kiekvienam pažymėtam mokiniui (${list.length}) sukuriamas atskiras lapas su jo vardu, klase ir komitetais. Peržiūra – pirmo sąraše.` : 'Pasirinkite mokinius aukščiau.'} Tekstai bendri visiems komitetams.${!F.blank && F.reg && Auth.can('register.edit') ? ' Atsisiunčiant ar spausdinant numeris priskiriamas automatiškai ir įrašomas į Registrą.' : ''}</p></div></div>
       ${editor}<div class="doc-preview">${list.length || F.blank || group ? preview : '<div class="card"><p class="muted">Mokinių nėra.</p></div>'}</div>`;
   }
   function docBlocks() { const o = docOpts(); return Forms.many(F.doc, docList(), (s) => { const x = o(s); if (!s && Forms.isGroup(F.doc) && !F.blank) x.coms = comName(cid()); return x; }); }
