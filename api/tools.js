@@ -15,7 +15,7 @@ async function list(sql, me) {
 const listTpl = (sql) => sql`SELECT id, name, data, created_by_name AS "by", updated_at AS "updatedAt" FROM list_templates ORDER BY name LIMIT 200`;
 
 /* Dokumentų blankų tekstai (Įrankiai → Dokumentai): vienas JSON įrašas app_meta lentelėje. */
-const FORM_KEYS = ['org', 'chair', 'join', 'rejoin', 'leave', 'remove', 'talk'];
+const FORM_KEYS = ['org', 'chair', 'join', 'rejoin', 'leave', 'warn', 'remove', 'talk', 'cert', 'minutes', 'plan'];
 async function loadForms(sql) {
   const [r] = await sql`SELECT val FROM app_meta WHERE key = 'forms_v1'`;
   try { return r ? JSON.parse(r.val) : {}; } catch { return {}; }
