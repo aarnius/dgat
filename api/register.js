@@ -95,6 +95,14 @@ export default handler(async (req, res, body) => {
       await logEvent(sql, me, 'register', `Registras: pakeistas ${r.doc_no}`, { id });
       return { ok: true, entries: await listRows(sql) };
     }
+    case 'delete': {
+      requirePerm(me, 'register.delete');
+      const ids = (Array.isArray(body.ids) ? body.ids : []).map((x) => str(x, 40)).filter(Boolean).slice(0, 1000);
+      if (!ids.length) throw new HttpError(400, 'Nepasirinkta įrašų.');
+      const rows = await sql`DELETE FROM register_entries WHERE id = ANY(${ids}::text[]) RETURNING doc_no, sys_no`;
+      await logEvent(sql, me, 'register', `Registras: ištrinta įrašų – ${rows.length}`, { numbers: rows.map((r) => r.doc_no).sort() });
+      return { ok: true, deleted: rows.length, entries: await listRows(sql) };
+    }
     case 'void': case 'restore': {
       requirePerm(me, 'register.void');
       const id = str(body.id, 40), v = body.action === 'void';

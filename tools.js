@@ -18,7 +18,7 @@ const Tools = (() => {
   const M = { onlyRisk: false, to: 'student', tplId: '', subject: '', body: '', test: '', busy: false, status: '', bad: false };
   const A = { codes: null, st: 'idle', resend: false, busy: false, status: '', bad: false };
   const ACC_CHUNK = 10;
-  const F = { reg: true, doc: 'join', date: '', blank: false, edit: false, editDoc: 'join', draft: {}, org: null, busy: false };
+  const F = { reg: true, printNr: true, doc: 'join', date: '', blank: false, edit: false, editDoc: 'join', draft: {}, org: null, busy: false };
   const OBJ = { S, G, D, L, R, X, C, M, A, F };
   let saved = null, savedSt = 'idle', savedErr = '', tpls = [];
   let mailTpls = null, mailTplSt = 'idle', mailFirst = null;
@@ -261,7 +261,7 @@ const Tools = (() => {
     toast('Įrašyta į Registrą: ' + need.map((s, i) => r.issued[i].docNo).join(', '));
     if (window.Reg) Reg.reload();
   }
-  const docOpts = () => (s) => ({ nr: F.issued[regKey(s)], date: F.date || today(), coms: s ? (s.classIds || []).map(comName).filter(Boolean).join(', ') : '', rate: s ? statsAll(s).rate : null, author: authorName() });
+  const docOpts = () => (s) => ({ nr: F.printNr ? F.issued[regKey(s)] : undefined, date: F.date || today(), coms: s ? (s.classIds || []).map(comName).filter(Boolean).join(', ') : '', rate: s ? statsAll(s).rate : null, author: authorName() });
   const authorName = () => { const u = Auth.user(); return u ? u.name + (u.roleName ? ', ' + u.roleName : '') : ''; };
   const docList = () => (F.blank ? [] : pool());
   function renderDocs() {
@@ -284,7 +284,8 @@ const Tools = (() => {
       <label>Dokumentas<select data-tool="F.doc">${Forms.DOCS.map(([k, l]) => `<option value="${k}" ${F.doc === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
       <label>Data dokumente<input type="date" data-tool="F.date" value="${esc(F.date)}"></label>
       <label class="check"><input type="checkbox" data-tool="F.blank" ${F.blank ? 'checked' : ''}> Tuščias blankas (be mokinio duomenų)</label>
-      ${Auth.can('register.edit') ? `<label class="check"><input type="checkbox" data-tool="F.reg" ${F.reg ? 'checked' : ''} ${F.blank ? 'disabled' : ''}> Priskirti numerį ir įrašyti į Registrą</label>` : ''}</div>
+      ${Auth.can('register.edit') ? `<label class="check"><input type="checkbox" data-tool="F.reg" ${F.reg ? 'checked' : ''} ${F.blank ? 'disabled' : ''}> Priskirti numerį ir įrašyti į Registrą</label>
+      <label class="check"><input type="checkbox" data-tool="F.printNr" ${F.printNr ? 'checked' : ''} ${F.reg && !F.blank ? '' : 'disabled'}> Numerį išspausdinti dokumente (nepažymėjus – eilutė „Nr.“ lieka tuščia rašyti tušinuku)</label>` : ''}</div>
       <div class="actions" style="margin-top:12px"><button class="btn primary" data-act="tool-docx" data-t="docs">Atsisiųsti .docx${F.blank || group ? '' : ` (${list.length})`}</button><button class="btn" data-act="tool-doc-print">${ICON.print} Spausdinti</button>${canEdit ? '<button class="btn" data-act="tool-doc-edit">Redaguoti tekstus</button>' : ''}</div>
       <p class="sub" style="margin:10px 0 0">${F.blank ? 'Bus sukurtas vienas tuščias blankas.' : group ? `Vienas bendras dokumentas; pažymėti mokiniai (${list.length}) įrašomi į dalyvių sąrašą, jei jis numatytas.` : list.length ? `Kiekvienam pažymėtam mokiniui (${list.length}) sukuriamas atskiras lapas su jo vardu, klase ir komitetais. Peržiūra – pirmo sąraše.` : 'Pasirinkite mokinius aukščiau.'} Tekstai bendri visiems komitetams.${!F.blank && F.reg && Auth.can('register.edit') ? ' Atsisiunčiant ar spausdinant numeris priskiriamas automatiškai ir įrašomas į Registrą.' : ''}</p></div></div>
       ${editor}<div class="doc-preview">${list.length || F.blank || group ? preview : '<div class="card"><p class="muted">Mokinių nėra.</p></div>'}</div>`;
