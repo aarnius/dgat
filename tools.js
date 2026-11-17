@@ -242,7 +242,7 @@ const Tools = (() => {
     const bl = [{ t: 'title', text: title }];
     if (L.sub.trim()) bl.push({ t: 'sub', text: L.sub });
     bl.push({ t: 'table', head, widths, rows, rowH: { compact: 320, normal: 420, tall: 620 }[L.rowh] || 420 });
-    Docx.save(title + '-' + today(), Docx.build(bl, { landscape: L.land, size: { s: 10, m: 11, l: 13 }[L.fs] || 11 }));
+    Docx.save(title + '-' + today(), Docx.build(bl, { landscape: L.land, size: { s: 10, m: 11, l: 13 }[L.fs] || 11, margin: 1134 }));
     logClient('export-tool', 'sarasas-docx');
   }
 
@@ -276,7 +276,7 @@ const Tools = (() => {
   function docBlocks() { const o = docOpts(); return Forms.many(F.doc, docList(), (s) => o(s)); }
   function docDocx() {
     if (!F.blank && !docList().length) { toast('Pasirinkite bent vieną mokinį'); return; }
-    Docx.save(`${Forms.label(F.doc)}-${F.date || today()}`, Docx.build(docBlocks()));
+    Docx.save(`${Forms.label(F.doc)}-${F.date || today()}`, Docx.build(docBlocks(), { size: 10, margin: 1000 }));
     logClient('export-doc', Forms.label(F.doc) + ' ×' + (F.blank ? 1 : docList().length));
   }
   function docPrint() {

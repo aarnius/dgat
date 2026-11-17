@@ -183,6 +183,7 @@ Jei situacija nesikeičia, narys gauna raštišką įspėjimą ir kviečiamas į
   const MONTHS = ['sausio', 'vasario', 'kovo', 'balandžio', 'gegužės', 'birželio', 'liepos', 'rugpjūčio', 'rugsėjo', 'spalio', 'lapkričio', 'gruodžio'];
   const dateLong = (iso) => { const m = /^(\d{4})-(\d\d)-(\d\d)$/.exec(iso || ''); return m ? `${m[1]} m. ${MONTHS[+m[2] - 1]} ${+m[3]} d.` : ''; };
   const BLANK = '______________';
+  const stamp = () => { const n = new Date(), p = (x) => String(x).padStart(2, '0'); return `${n.getFullYear()}-${p(n.getMonth() + 1)}-${p(n.getDate())} ${p(n.getHours())}:${p(n.getMinutes())}`; };
 
   /* Kintamųjų reikšmės vienam mokiniui (arba tuščias blankas, kai s == null). */
   function vars(s, o) {
@@ -212,7 +213,7 @@ Jei situacija nesikeičia, narys gauna raštišką įspėjimą ir kviečiamas į
       else if (l.startsWith('^ ')) out.push({ t: 'c', text: l.slice(2) });
       else out.push({ t: 'p', text: l });
     });
-    if (o.author) out.push({ t: 'note', text: 'Dokumentą parengė: ' + o.author });
+    if (o.author) out.push({ t: 'note', text: 'Dokumentą parengė: ' + o.author + ', ' + stamp() });
     return out;
   }
   const label = (k) => (DOCS.find((d) => d[0] === k) || [0, k])[1];
