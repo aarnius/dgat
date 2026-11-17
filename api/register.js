@@ -1,7 +1,7 @@
 import { db, handler, HttpError, getUser, requireUser, requirePerm, logEvent, newId, str } from '../lib/server.js';
 
 /* REGISTRAS: visų dokumentų (įspėjimų, priėmimo, išėjimo, pokalbių ir t. t.) numeracija. sys_no – bendras sistemos numeris, doc_no – numeris pagal tipą ir metus. */
-const KINDS = { warn: 'ISP', talk: 'MP', remove: 'NP', join: 'PRM', rejoin: 'GRZ', leave: 'NI', cert: 'PZ', minutes: 'PR', plan: 'PLN', other: 'KT' };
+const KINDS = { warn: 'ISP', talk: 'MP', remove: 'NP', join: 'PRM', rejoin: 'PA', leave: 'NI', cert: 'PZ', minutes: 'PR', plan: 'PLN', other: 'KT' };
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const needDate = (v) => { if (!DATE_RE.test(String(v))) throw new HttpError(400, 'Netinkama data.'); return String(v); };
 const schoolYearEnd = (d) => { const y = +d.slice(0, 4), m = +d.slice(5, 7); return `${m >= 9 ? y + 1 : y}-08-31`; };

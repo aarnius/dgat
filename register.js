@@ -10,7 +10,7 @@ const Reg = (() => {
     cert: ['Dalyvavimo Taryboje pažyma', 'Kita'], minutes: ['Eilinis posėdis', 'Neeilinis posėdis'], plan: ['Renginys', 'Projektas'], other: ['Kita'],
   };
   const GROUP = ['minutes', 'plan', 'other'];
-  const PREFIX = { warn: 'ISP', talk: 'MP', remove: 'NP', join: 'PRM', rejoin: 'GRZ', leave: 'NI', cert: 'PZ', minutes: 'PR', plan: 'PLN', other: 'KT' };
+  const PREFIX = { warn: 'ISP', talk: 'MP', remove: 'NP', join: 'PRM', rejoin: 'PA', leave: 'NI', cert: 'PZ', minutes: 'PR', plan: 'PLN', other: 'KT' };
   /* Kito automatinio numerio peržiūra (pvz. ISP-004): didžiausias to tipo numeris + 1. */
   const nextNo = (kind) => { const re = new RegExp('^' + PREFIX[kind] + '-(\\d+)$'); const used = new Set(E.map((e) => e.docNo)); let n = 0; E.forEach((e) => { const m = re.exec(e.docNo); if (m) n = Math.max(n, +m[1]); }); n++; while (used.has(PREFIX[kind] + '-' + String(n).padStart(3, '0'))) n++; return PREFIX[kind] + '-' + String(n).padStart(3, '0'); };
   const kname = (k) => (KINDS.find((x) => x[0] === k) || [0, k])[1];
