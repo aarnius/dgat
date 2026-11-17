@@ -1,11 +1,11 @@
 /* REGISTRAS: visų dokumentų (įspėjimų, priėmimo, išėjimo, pokalbių ir t. t.) numeriai. Stulpeliai: sistemos Nr., tipas, kam, dėl ko (pažymėti punktai). */
 const Reg = (() => {
   const KINDS = [['warn', 'Įspėjimas'], ['join', 'Priėmimas į Tarybą'], ['rejoin', 'Grįžimas į Tarybą'], ['leave', 'Išėjimas iš Tarybos'], ['remove', 'Pašalinimas iš Tarybos'],
-    ['talk', 'Pokalbis'], ['cert', 'Pažyma'], ['minutes', 'Posėdžio protokolas'], ['plan', 'Renginio / projekto planas'], ['other', 'Kitas dokumentas']];
+    ['talk', 'Motyvacinis pokalbis'], ['cert', 'Pažyma'], ['minutes', 'Posėdžio protokolas'], ['plan', 'Renginio / projekto planas'], ['other', 'Kitas dokumentas']];
   const REASONS = {
     warn: ['Be pateisinamos priežasties praleisti 2 posėdžiai iš eilės', 'Pareigų nevykdymas (neatliktos užduotys, nesilaikoma terminų)', 'Netinkamas elgesys'],
     remove: ['Du galiojantys įspėjimai', 'Šiurkštus įstatų pažeidimas', 'Savo noru / prašymu'],
-    talk: ['Motyvacinis pokalbis dėl aktyvumo', 'Pokalbis dėl elgesio', 'Pokalbis dėl pareigų vykdymo', 'Kita'],
+    talk: ['Dėl žemo aktyvumo', 'Dėl elgesio', 'Dėl pareigų vykdymo', 'Kita'],
     join: ['Naujas narys', 'Pateiktas prašymas'], rejoin: ['Grįžta po pertraukos'], leave: ['Savo noru', 'Baigė mokyklą', 'Neaktyvumas', 'Kita'],
     cert: ['Dalyvavimo Taryboje pažyma', 'Kita'], minutes: ['Eilinis posėdis', 'Neeilinis posėdis'], plan: ['Renginys', 'Projektas'], other: ['Kita'],
   };
