@@ -386,7 +386,7 @@ function renderSide() {
   const has = state.classes.length > 0;
   const dark = currentTheme() === 'dark';
   side.innerHTML = `
-    <div class="brand"><span class="logo">${ICON.check}</span>Lankomumas</div>
+    <div class="brand"><span class="logo logo-mt"><img class="logo-img" src="/icon-192.png" alt="" width="36" height="36"></span>DGG Mokinių taryba</div>
     ${state.students.length ? `<div class="gsearch"><input id="gsearch" type="search" placeholder="Ieškoti mokinio…" autocomplete="off" aria-label="Ieškoti mokinio visuose komitetuose" value="${esc(gq)}"><div id="gres" class="gres" hidden></div></div>` : ''}
     ${has ? `<div class="class-box"><div class="lbl">Komitetas</div>
       <select id="classSelect" aria-label="Komitetas">${state.classes.map((c) => `<option value="${c.id}" ${c.id === state.currentClassId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>

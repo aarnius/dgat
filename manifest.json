@@ -1,6 +1,6 @@
 {
-  "name": "Lankomumo žurnalas",
-  "short_name": "Lankomumas",
+  "name": "DGG Mokinių taryba – lankomumo žurnalas",
+  "short_name": "DGG MT",
   "lang": "lt",
   "start_url": "/zurnalas",
   "scope": "/",

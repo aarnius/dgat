@@ -618,3 +618,7 @@ table.sheet.fs-l { font-size: 1.05rem; }
   body.print-forms .form-sheet:last-child { page-break-after: auto; break-after: auto; }
   .doc-preview .form-sheet { border: 0; box-shadow: none; }
 }
+
+/* Tarybos logotipas (DG kortelės, kaip tarybos svetainėje) */
+.logo.logo-mt { background: none; box-shadow: none; padding: 0; overflow: hidden; }
+.logo-mt .logo-img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
