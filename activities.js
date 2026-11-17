@@ -232,7 +232,8 @@ const Acts = (() => {
       const t = totals(s.id, { aid: a.id }), com = (state.classes.find((c) => c.id === a.classId) || {}).name || '';
       return `<tr><td>${esc(a.name)} <small class="muted">${esc(com)}</small></td><td class="num">${sessionsOf(a.id).length}</td><td class="num">${t.P}</td><td class="num">${t.A}</td><td class="num">${t.L}</td><td class="num">${t.E}</td><td class="num">${rateBadge(t.rate)}</td></tr>`;
     }).join('');
-    return rows ? `<h4 class="card-sec">Veiklos</h4><div class="table-wrap"><table><thead><tr><th>Veikla</th><th class="num">Užsiėmimų</th><th class="num">Dalyvavo</th><th class="num">Nedalyvavo</th><th class="num">Vėlavo</th><th class="num">Pateisinta</th><th class="num">Rodiklis</th></tr></thead><tbody>${rows}</tbody></table></div>` : '';
+    const all = totals(s.id), badge = all.rate == null ? '' : ` <span class="rate ${all.rate >= 90 ? 'good' : all.rate >= 80 ? 'mid' : 'low'}">bendras veiklų lankomumas: ${all.rate}%</span>`;
+    return rows ? `<h4 class="card-sec">Veiklos${badge}</h4><div class="table-wrap"><table><thead><tr><th>Veikla</th><th class="num">Užsiėmimų</th><th class="num">Dalyvavo</th><th class="num">Nedalyvavo</th><th class="num">Vėlavo</th><th class="num">Pateisinta</th><th class="num">Rodiklis</th></tr></thead><tbody>${rows}</tbody></table></div>` : '';
   }
 
   /* ---------- formos ---------- */

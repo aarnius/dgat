@@ -1,7 +1,7 @@
 /* LOG (pakeitimų istorija) ir atsarginės kopijos serveryje. Naudoja app.js / auth.js funkcijas (api, esc, head, ICON, render...). */
 const Logs = (() => {
   const KINDS = [['', 'Visi įvykiai'], ['attendance', 'Lankomumas'], ['activities', 'Veiklos'], ['tools', 'Įrankiai'], ['students', 'Mokiniai'], ['committees', 'Komitetai'], ['data', 'Duomenys'], ['undo', 'Atšaukimai'],
-    ['auth', 'Prisijungimai'], ['admin', 'Administravimas'], ['backup', 'Kopijos'], ['export', 'Eksportas / spausdinimas']];
+    ['auth', 'Prisijungimai'], ['admin', 'Administravimas'], ['backup', 'Kopijos'], ['export', 'Eksportas / spausdinimas'], ['register', 'Registras']];
   const kindName = (k) => { const x = KINDS.find((y) => y[0] === k); return x ? x[1] : k; };
   let f = { kind: '', from: '', to: '', q: '' }, items = [], more = false, st = 'idle', err = '';
   const fmt = (ts) => new Date(ts).toLocaleString('lt-LT', { dateStyle: 'short', timeStyle: 'medium' });

@@ -13,7 +13,7 @@ Komitetas (-ai): **{komitetai}**
 El. paštas: **{el_pastas}**`;
   const HEAD = (title) => `## {taryba}
 ### ${title}
-^ {data_iso}   Nr. ____________
+^ {data_iso}   Nr. {nr}
 ^ Kaunas
 `;
   const DEFAULTS = {
@@ -94,10 +94,10 @@ ${WHO}
 Įspėjimo data: **{data}**
 
 # 1. Įspėjimo priežastis (įstatų 6.1.1 p.)
-☐ Be pateisinamos priežasties praleisti 2 posėdžiai iš eilės (datos): ${'_'.repeat(30)}
-☐ Nevykdomos pareigos – neatliktos užduotys ar nesilaikoma terminų: ${'_'.repeat(20)}
-☐ Netinkamas elgesys: ${'_'.repeat(54)}
-Aprašymas: ${'_'.repeat(64)}
+{c1} Be pateisinamos priežasties praleisti 2 posėdžiai iš eilės (datos): ${'_'.repeat(30)}
+{c2} Nevykdomos pareigos – neatliktos užduotys ar nesilaikoma terminų: ${'_'.repeat(20)}
+{c3} Netinkamas elgesys: ${'_'.repeat(54)}
+Aprašymas: {aprasymas}
 ${'_'.repeat(78)}
 
 # 2. Nario paaiškinimas (įstatų 5.2.5, 6.1.3 p.)
@@ -106,9 +106,9 @@ Paaiškinimas: ${'_'.repeat(60)}
 ${'_'.repeat(78)}
 
 # 3. Sprendimas
-Skiriamas įspėjimas, galiojantis iki einamųjų mokslo metų pabaigos (data): ______________________
+Skiriamas įspėjimas, galiojantis iki einamųjų mokslo metų pabaigos (data): {galioja_iki}
 Galiojančių įspėjimų skaičius su šiuo: ______ (paskyrus 2 galiojančius įspėjimus, narys šalinamas, įstatų 6.2.1 p.).
-Įspėjimas įrašytas į įspėjimų registrą, Nr. ______ . Narys informuotas raštu: ☐ žinute  ☐ el. laišku  ☐ šiuo lapu
+Įspėjimas įrašytas į įspėjimų registrą, Nr. {nr}. Narys informuotas raštu: ☐ žinute  ☐ el. laišku  ☐ šiuo lapu
 
 ~ Tarybos pirmininkas (-ė) {pirmininkas}, parašas
 ~ Tarybos sekretorius (-ė), parašas
@@ -277,6 +277,8 @@ Pastabos: ${'_'.repeat(66)}
       pavarde_vardas: s ? v([s.last, s.first].filter(Boolean).join(' ')) : BLANK.repeat(2),
       klase: v(s && s.grade), komitetai: v(o.coms), el_pastas: v(s && s.email),
       lankomumas: s && o.rate != null ? o.rate + ' %' : BLANK, data: v(dateLong(o.date)), data_iso: v(o.date), taryba: org(),
+      nr: o.nr || BLANK, aprasymas: o.details || '_'.repeat(64), galioja_iki: o.validUntil ? dateLong(o.validUntil) : BLANK,
+      c1: o.reasons && o.reasons.includes(0) ? '☒' : '☐', c2: o.reasons && o.reasons.includes(1) ? '☒' : '☐', c3: o.reasons && o.reasons.includes(2) ? '☒' : '☐',
       pirmininkas: chair() || BLANK, rengejas: o.author || BLANK, dalyviai: o.names && o.names.length ? o.names.join(', ') : BLANK.repeat(5),
     };
   }
