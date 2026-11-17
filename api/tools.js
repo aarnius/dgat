@@ -14,13 +14,20 @@ async function list(sql, me) {
 
 const listTpl = (sql) => sql`SELECT id, name, data, created_by_name AS "by", updated_at AS "updatedAt" FROM list_templates ORDER BY name LIMIT 200`;
 
+/* Dokumentų blankų tekstai (Įrankiai → Dokumentai): vienas JSON įrašas app_meta lentelėje. */
+const FORM_KEYS = ['org', 'join', 'rejoin', 'leave', 'remove', 'talk'];
+async function loadForms(sql) {
+  const [r] = await sql`SELECT val FROM app_meta WHERE key = 'forms_v1'`;
+  try { return r ? JSON.parse(r.val) : {}; } catch { return {}; }
+}
+
 export default handler(async (req, res, body) => {
   const sql = db();
   const me = requireUser(await getUser(req));
   requirePerm(me, 'tools.view');
   if (req.method === 'GET') {
-    const [groups, templates] = await Promise.all([list(sql, me), listTpl(sql)]);
-    return { groups, templates };
+    const [groups, templates, forms] = await Promise.all([list(sql, me), listTpl(sql), loadForms(sql)]);
+    return { groups, templates, forms };
   }
 
   switch (body.action) {
@@ -54,6 +61,15 @@ export default handler(async (req, res, body) => {
       return { groups: await list(sql, me) };
     }
     /* Sąrašų spausdinimui šablonai (bendri visiems komitetams). */
+    case 'forms-save': {
+      requirePerm(me, 'tools.save');
+      const f = body.forms && typeof body.forms === 'object' ? body.forms : {};
+      const out = {};
+      FORM_KEYS.forEach((k) => { const v = typeof f[k] === 'string' ? f[k].replace(/\r/g, '').trim() : ''; if (v) out[k] = v.slice(0, k === 'org' ? 150 : 12000); });
+      await sql`INSERT INTO app_meta (key, val) VALUES ('forms_v1', ${JSON.stringify(out)}) ON CONFLICT (key) DO UPDATE SET val = EXCLUDED.val`;
+      await logEvent(sql, me, 'tools', 'Atnaujinti dokumentų blankų tekstai');
+      return { forms: out };
+    }
     case 'tpl-save': {
       requirePerm(me, 'tools.save');
       const name = str(body.name, 120);
@@ -67,6 +83,7 @@ export default handler(async (req, res, body) => {
         num: d.num !== false, grade: !!d.grade, cols, extra: num(d.extra, 0, 40),
         rowh: ['compact', 'normal', 'tall'].includes(d.rowh) ? d.rowh : 'normal',
         fs: ['s', 'm', 'l'].includes(d.fs) ? d.fs : 'm', land: !!d.land,
+        nameFmt: d.nameFmt === 'lf' ? 'lf' : 'fl', sort: ['name', 'first', 'grade'].includes(d.sort) ? d.sort : 'name',
       };
       let id = body.id ? needId(body.id) : '';
       if (id) {

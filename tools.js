@@ -3,7 +3,7 @@
    Čia taip pat yra kalendoriaus kortelė (Tools.calendar), kurią rodo „Apžvalga“.
    Naudoja app.js / auth.js / activities.js funkcijas (state, classStudents, stats, Acts, api, head, esc, toast...). */
 const Tools = (() => {
-  const TABS = [['groups', 'Grupių skirstymas'], ['draw', 'Atsitiktinis mokinys'], ['lists', 'Sąrašai spausdinimui'], ['risk', 'Rizikos sąrašas'], ['mail', 'Laiškai'], ['access', 'Mokinių prieiga'], ['dupes', 'Dublikatai']];
+  const TABS = [['groups', 'Grupių skirstymas'], ['draw', 'Atsitiktinis mokinys'], ['lists', 'Sąrašai spausdinimui'], ['docs', 'Dokumentai'], ['risk', 'Rizikos sąrašas'], ['mail', 'Laiškai'], ['access', 'Mokinių prieiga'], ['dupes', 'Dublikatai']];
   const IGN_KEY = 'attendance-dupe-ignore';
   const loadIgn = () => { try { return new Set(JSON.parse(localStorage.getItem(IGN_KEY) || '[]')); } catch (e) { return new Set(); } };
 
@@ -11,14 +11,15 @@ const Tools = (() => {
   const S = { src: 'all', grade: '', skip: false, excl: new Set(), pickOpen: false, key: '' };
   const G = { mode: 'n', n: 3, size: 4, mix: false, res: null };
   const D = { n: 1, norepeat: true, drawn: [], hist: [], last: [], busy: false };
-  const L = { tpl: '', title: '', sub: 'Data: ____________________', hNr: 'Nr.', hName: 'Vardas, pavardė', hGrade: 'Klasė', num: true, grade: true, cols: [{ n: 'Parašas', w: 'xl' }], extra: 0, rowh: 'normal', fs: 'm', land: false };
+  const L = { tpl: '', title: '', sub: 'Data: ____________________', hNr: 'Nr.', hName: 'Vardas, pavardė', hGrade: 'Klasė', num: true, grade: true, cols: [{ n: 'Parašas', w: 'xl' }], extra: 0, rowh: 'normal', fs: 'm', land: false, nameFmt: 'fl', sort: 'name' };
   const R = { scope: 'com', from: '', to: '', thr: 80, minDays: 3, streak: 3, acts: true };
   const X = { fuzzy: false, ignore: loadIgn() };
   const C = { m: '', mode: 'com' };
   const M = { onlyRisk: false, to: 'student', tplId: '', subject: '', body: '', test: '', busy: false, status: '', bad: false };
   const A = { codes: null, st: 'idle', resend: false, busy: false, status: '', bad: false };
   const ACC_CHUNK = 10;
-  const OBJ = { S, G, D, L, R, X, C, M, A };
+  const F = { doc: 'join', date: '', blank: false, edit: false, editDoc: 'join', draft: {}, org: null, busy: false };
+  const OBJ = { S, G, D, L, R, X, C, M, A, F };
   let saved = null, savedSt = 'idle', savedErr = '', tpls = [];
   let mailTpls = null, mailTplSt = 'idle', mailFirst = null;
 
@@ -82,7 +83,7 @@ const Tools = (() => {
   function loadSaved() {
     if (savedSt === 'loading') return;
     savedSt = 'loading';
-    api('/api/tools').then((r) => { saved = r.groups; tpls = r.templates || []; savedErr = ''; }).catch((e) => { savedErr = e.message; saved = []; }).finally(() => { savedSt = 'ready'; if (view === 'tools') render(); });
+    api('/api/tools').then((r) => { saved = r.groups; tpls = r.templates || []; Forms.set(r.forms); savedErr = ''; }).catch((e) => { savedErr = e.message; saved = []; }).finally(() => { savedSt = 'ready'; if (view === 'tools') render(); });
   }
   const nameOf = (id, res) => { const s = state.students.find((x) => x.id === id); return s ? displayName(s) : (res.names[id] || '?') + ' (nebėra sąraše)'; };
   const gradeOf = (id) => { const s = state.students.find((x) => x.id === id); return s ? s.grade || '' : ''; };
@@ -157,6 +158,7 @@ const Tools = (() => {
       hNr: d.hNr !== undefined ? d.hNr : 'Nr.', hName: d.hName !== undefined ? d.hName : 'Vardas, pavardė', hGrade: d.hGrade !== undefined ? d.hGrade : 'Klasė',
       num: d.num !== false, grade: d.grade !== false, cols: cols.map((c) => ({ n: String((c && c.n) || ''), w: (c && c.w) || 'auto' })),
       extra: Number(d.extra) || 0, rowh: d.rowh || 'normal', fs: d.fs || 'm', land: !!d.land,
+      nameFmt: d.nameFmt === 'lf' ? 'lf' : 'fl', sort: ['name', 'first', 'grade'].includes(d.sort) ? d.sort : 'name',
     };
   }
   const tplData = () => normTpl(L);
@@ -182,14 +184,22 @@ const Tools = (() => {
         : 'Šablonas išsaugo visus sąrašo nustatymus: pavadinimą, stulpelius, jų pavadinimus ir plotį, eilutes, šriftą ir lapo padėtį. Šablonai bendri visiems komitetams.'}</p></div>`;
   }
   const hIn = (attrs, v, ph) => `<input class="th-in no-print" ${attrs} value="${esc(v)}" placeholder="${esc(ph)}" maxlength="60"><span class="print-only">${esc(v)}</span>`;
+  /* Sąrašo mokinių vardų forma ir rikiavimas (Vardas Pavardė / Pavardė Vardas). */
+  const lname = (s) => (L.nameFmt === 'lf' ? [s.last, s.first].filter(Boolean).join(' ') : displayName(s));
+  const listPool = () => {
+    const l = pool().slice(), c = (a, b) => String(a || '').localeCompare(String(b || ''), 'lt', { numeric: true });
+    if (L.sort === 'first') l.sort((a, b) => c(a.first, b.first) || c(a.last, b.last));
+    else if (L.sort === 'grade') l.sort((a, b) => c(a.grade, b.grade) || c(a.last, b.last) || c(a.first, b.first));
+    return l;
+  };
   function renderLists() {
-    const ppl = pool();
+    const ppl = listPool();
     const title = L.title.trim() || 'Sąrašas – ' + srcTitle();
     const extra = Math.max(0, Math.min(40, Math.floor(L.extra) || 0));
     const rowCls = L.rowh === 'normal' ? '' : L.rowh;
     const blank = L.cols.map(() => '<td></td>').join('');
     const nCols = (L.num ? 1 : 0) + 1 + (L.grade ? 1 : 0) + L.cols.length;
-    const row = (i, s) => `<tr class="${rowCls}">${L.num ? `<td class="num">${i + 1}</td>` : ''}<td>${s ? `<b>${esc(displayName(s))}</b>` : ''}</td>${L.grade ? `<td>${s ? esc(s.grade || '') : ''}</td>` : ''}${blank}</tr>`;
+    const row = (i, s) => `<tr class="${rowCls}">${L.num ? `<td class="num">${i + 1}</td>` : ''}<td>${s ? `<b>${esc(lname(s))}</b>` : ''}</td>${L.grade ? `<td>${s ? esc(s.grade || '') : ''}</td>` : ''}${blank}</tr>`;
     const rows = ppl.map((s, i) => row(i, s)).join('') + Array.from({ length: extra }, (_, i) => row(ppl.length + i, null)).join('');
     const thead = `${L.num ? `<th class="num" style="width:6%">${hIn('data-lh="hNr"', L.hNr, 'Nr.')}</th>` : ''}<th>${hIn('data-lh="hName"', L.hName, 'Vardas, pavardė')}</th>${L.grade ? `<th style="width:9%">${hIn('data-lh="hGrade"', L.hGrade, 'Klasė')}</th>` : ''}` +
       L.cols.map((c, i) => `<th${wStyle(c.w)}>${hIn(`data-lcol="${i}" data-lf="n"`, c.n, 'Stulpelis ' + (i + 1))}</th>`).join('');
@@ -205,6 +215,8 @@ const Tools = (() => {
       <label>Papildomų tuščių eilučių<input type="number" min="0" max="40" data-tool="L.extra" value="${extra}"></label>
       <label>Eilučių aukštis<select data-tool="L.rowh"><option value="compact" ${L.rowh === 'compact' ? 'selected' : ''}>Žemas</option><option value="normal" ${L.rowh === 'normal' ? 'selected' : ''}>Įprastas</option><option value="tall" ${L.rowh === 'tall' ? 'selected' : ''}>Aukštas (parašams)</option></select></label>
       <label>Šrifto dydis<select data-tool="L.fs"><option value="s" ${L.fs === 's' ? 'selected' : ''}>Mažas</option><option value="m" ${L.fs === 'm' ? 'selected' : ''}>Įprastas</option><option value="l" ${L.fs === 'l' ? 'selected' : ''}>Didelis</option></select></label>
+      <label>Vardų forma<select data-tool="L.nameFmt"><option value="fl" ${L.nameFmt === 'fl' ? 'selected' : ''}>Vardas Pavardė</option><option value="lf" ${L.nameFmt === 'lf' ? 'selected' : ''}>Pavardė Vardas</option></select></label>
+      <label>Rikiuoti pagal<select data-tool="L.sort"><option value="name" ${L.sort === 'name' ? 'selected' : ''}>Pavardę</option><option value="first" ${L.sort === 'first' ? 'selected' : ''}>Vardą</option><option value="grade" ${L.sort === 'grade' ? 'selected' : ''}>Klasę, tada pavardę</option></select></label>
       <label class="check"><input type="checkbox" data-tool="L.num" ${L.num ? 'checked' : ''}> Rodyti numerį</label>
       <label class="check"><input type="checkbox" data-tool="L.grade" ${L.grade ? 'checked' : ''}> Rodyti klasę</label>
       <label class="check"><input type="checkbox" data-tool="L.land" ${L.land ? 'checked' : ''}> Gulsčias lapas</label></div>
@@ -212,11 +224,75 @@ const Tools = (() => {
       <div class="col-list">${colRows || '<p class="muted" style="margin:0">Papildomų stulpelių nėra.</p>'}</div>
       <div class="actions" style="margin-top:12px"><button class="btn small" data-act="tool-lcol" data-op="add">${ICON.plus} Pridėti stulpelį</button>
       <button class="btn small" data-act="tool-lpreset" data-p="sign">Pasirašymo lapas</button><button class="btn small" data-act="tool-lpreset" data-p="blank">Tuščia lentelė</button>
-      <span class="spacer"></span><button class="btn small" data-act="tool-print" data-t="lists">${ICON.print} Spausdinti</button><button class="btn small" data-act="tool-csv" data-t="lists">CSV</button></div>
+      <span class="spacer"></span><button class="btn small" data-act="tool-print" data-t="lists">${ICON.print} Spausdinti</button><button class="btn small" data-act="tool-csv" data-t="lists">CSV</button><button class="btn small primary" data-act="tool-docx" data-t="lists">Atsisiųsti .docx</button></div>
       <p class="sub" style="margin:10px 0 0">Stulpelių pavadinimus galite keisti ir tiesiai lentelės antraštėje žemiau.</p></div>
       ${L.land ? '<style>@page { size: A4 landscape; }</style>' : ''}
       <div class="card"><div class="sheet-head"><h2>${esc(title)}</h2>${L.sub.trim() ? `<p>${esc(L.sub)}</p>` : ''}</div>
       <div class="table-wrap"><table class="sheet fs-${esc(L.fs)}"><thead><tr>${thead}</tr></thead><tbody>${rows || `<tr><td colspan="${nCols}" class="muted">Mokinių nėra.</td></tr>`}</tbody></table></div></div>`;
+  }
+
+  function listDocx() {
+    const ppl = listPool(), extra = Math.max(0, Math.min(40, Math.floor(L.extra) || 0));
+    const title = L.title.trim() || 'Sąrašas – ' + srcTitle();
+    const W = { auto: 3, xs: 1, s: 2, m: 3, l: 5, xl: 8 };
+    const head = [...(L.num ? [L.hNr] : []), L.hName, ...(L.grade ? [L.hGrade] : []), ...L.cols.map((c) => c.n)];
+    const widths = [...(L.num ? [1] : []), 6, ...(L.grade ? [1.5] : []), ...L.cols.map((c) => W[c.w] || 3)];
+    const rows = ppl.map((s, i) => [...(L.num ? [String(i + 1)] : []), lname(s), ...(L.grade ? [s.grade || ''] : []), ...L.cols.map(() => '')])
+      .concat(Array.from({ length: extra }, (_, i) => [...(L.num ? [String(ppl.length + i + 1)] : []), '', ...(L.grade ? [''] : []), ...L.cols.map(() => '')]));
+    const bl = [{ t: 'title', text: title }];
+    if (L.sub.trim()) bl.push({ t: 'sub', text: L.sub });
+    bl.push({ t: 'table', head, widths, rows, rowH: { compact: 320, normal: 420, tall: 620 }[L.rowh] || 420 });
+    Docx.save(title + '-' + today(), Docx.build(bl, { landscape: L.land, size: { s: 10, m: 11, l: 13 }[L.fs] || 11 }));
+    logClient('export-tool', 'sarasas-docx');
+  }
+
+  /* ---------- dokumentai: priėmimo, grįžimo, išėjimo, pašalinimo, pokalbio lapai ---------- */
+  const docOpts = () => (s) => ({ date: F.date || today(), coms: s ? (s.classIds || []).map(comName).filter(Boolean).join(', ') : '', rate: s ? statsAll(s).rate : null });
+  const docList = () => (F.blank ? [] : pool());
+  function renderDocs() {
+    if (saved === null && savedSt === 'idle') loadSaved();
+    if (!F.date) F.date = today();
+    const list = docList(), canEdit = Auth.can('tools.save');
+    const o = docOpts();
+    const first = list[0] || null;
+    const preview = Forms.html(Forms.blocks(F.doc, first, o(first)));
+    const editor = F.edit && canEdit ? `<div class="card no-print"><h2 style="margin-top:0">Dokumentų tekstų redagavimas</h2>
+      <div class="tool-opts"><label>Organizacijos pavadinimas ({taryba})<input data-fdraft="org" value="${esc(F.draft.org !== undefined ? F.draft.org : Forms.org())}" maxlength="150"></label>
+      <label>Dokumentas<select data-tool="F.editDoc">${Forms.DOCS.map(([k, l]) => `<option value="${k}" ${F.editDoc === k ? 'selected' : ''}>${esc(l)}${Forms.isCustom(k) ? ' ✎' : ''}</option>`).join('')}</select></label></div>
+      <textarea class="doc-edit" data-fdraft="${F.editDoc}" rows="22" spellcheck="true">${esc(F.draft[F.editDoc] !== undefined ? F.draft[F.editDoc] : Forms.text(F.editDoc))}</textarea>
+      <p class="sub" style="margin:8px 0">Žymėjimas: <code>## </code> pavadinimas · <code>### </code> paantraštė · <code># </code> skyrius · <code>- </code> punktas · <code>~ </code> parašo eilutė · <code>---</code> naujas lapas · <code>**paryškinta**</code><br>
+      Kintamieji: <code>{vardas}</code> <code>{pavarde_vardas}</code> <code>{klase}</code> <code>{komitetai}</code> <code>{el_pastas}</code> <code>{lankomumas}</code> <code>{data}</code> <code>{taryba}</code>. Jei reikšmės nėra, paliekama linija ranka užpildyti.</p>
+      <div class="actions"><button class="btn primary" data-act="tool-doc-save">Išsaugoti tekstus</button><button class="btn" data-act="tool-doc-reset">Atstatyti šio dokumento numatytąjį tekstą</button><button class="btn" data-act="tool-doc-close">Uždaryti</button></div></div>` : '';
+    return `<div class="no-print">${F.blank ? '' : srcBox()}<div class="card"><div class="tool-opts">
+      <label>Dokumentas<select data-tool="F.doc">${Forms.DOCS.map(([k, l]) => `<option value="${k}" ${F.doc === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+      <label>Data dokumente<input type="date" data-tool="F.date" value="${esc(F.date)}"></label>
+      <label class="check"><input type="checkbox" data-tool="F.blank" ${F.blank ? 'checked' : ''}> Tuščias blankas (be mokinio duomenų)</label></div>
+      <div class="actions" style="margin-top:12px"><button class="btn primary" data-act="tool-docx" data-t="docs">Atsisiųsti .docx${F.blank ? '' : ` (${list.length})`}</button><button class="btn" data-act="tool-doc-print">${ICON.print} Spausdinti</button>${canEdit ? '<button class="btn" data-act="tool-doc-edit">Redaguoti tekstus</button>' : ''}</div>
+      <p class="sub" style="margin:10px 0 0">${F.blank ? 'Bus sukurtas vienas tuščias blankas.' : list.length ? `Kiekvienam pažymėtam mokiniui (${list.length}) sukuriamas atskiras lapas su jo vardu, klase ir komitetais. Peržiūra – pirmo sąraše.` : 'Pasirinkite mokinius aukščiau.'} Tekstai bendri visiems komitetams.</p></div></div>
+      ${editor}<div class="doc-preview">${list.length || F.blank ? preview : '<div class="card"><p class="muted">Mokinių nėra.</p></div>'}</div>`;
+  }
+  function docBlocks() { const o = docOpts(); return Forms.many(F.doc, docList(), (s) => o(s)); }
+  function docDocx() {
+    if (!F.blank && !docList().length) { toast('Pasirinkite bent vieną mokinį'); return; }
+    Docx.save(`${Forms.label(F.doc)}-${F.date || today()}`, Docx.build(docBlocks()));
+    logClient('export-doc', Forms.label(F.doc) + ' ×' + (F.blank ? 1 : docList().length));
+  }
+  function docPrint() {
+    if (!F.blank && !docList().length) { toast('Pasirinkite bent vieną mokinį'); return; }
+    let box = document.getElementById('printForms');
+    if (!box) { box = document.createElement('div'); box.id = 'printForms'; document.body.appendChild(box); }
+    box.innerHTML = Forms.html(docBlocks());
+    document.body.classList.add('print-forms');
+    logClient('print-doc', Forms.label(F.doc) + ' ×' + (F.blank ? 1 : docList().length));
+    setTimeout(() => window.print(), 50);
+  }
+  window.addEventListener('afterprint', () => { document.body.classList.remove('print-forms'); const b = document.getElementById('printForms'); if (b) b.innerHTML = ''; });
+  async function docSave() {
+    const f = Object.assign({}, { org: Forms.org() });
+    Forms.DOCS.forEach(([k]) => { f[k] = F.draft[k] !== undefined ? F.draft[k] : (Forms.isCustom(k) ? Forms.text(k) : ''); });
+    if (F.draft.org !== undefined) f.org = F.draft.org;
+    try { const r = await api('/api/tools', { action: 'forms-save', forms: f }); Forms.set(r.forms); F.draft = {}; toast('Tekstai išsaugoti'); } catch (e) { toast(e.message); }
+    render();
   }
 
   /* ---------- rizikos sąrašas ---------- */
@@ -589,9 +665,9 @@ const Tools = (() => {
       return [(r.title || 'grupes'), lines.join('\n')];
     }
     if (t === 'lists') {
-      const l = pool();
+      const l = listPool();
       const hd = [...(L.num ? [L.hNr] : []), L.hName, ...(L.grade ? [L.hGrade] : []), ...L.cols.map((c) => c.n)];
-      return ['sarasas', [hd.map(csvCell).join(','), ...l.map((s, i) => [...(L.num ? [i + 1] : []), displayName(s), ...(L.grade ? [s.grade || ''] : []), ...L.cols.map(() => '')].map(csvCell).join(','))].join('\n')];
+      return ['sarasas', [hd.map(csvCell).join(','), ...l.map((s, i) => [...(L.num ? [i + 1] : []), lname(s), ...(L.grade ? [s.grade || ''] : []), ...L.cols.map(() => '')].map(csvCell).join(','))].join('\n')];
     }
     if (t === 'risk') {
       const rows = riskRows();
@@ -605,7 +681,7 @@ const Tools = (() => {
   function renderPage() {
     const tabs = TABS.filter(([k]) => (k !== 'mail' || Auth.can('tools.save') || Auth.can('tools.view')) && (k !== 'access' || Auth.can('students.access')));
     if (!tabs.some(([k]) => k === tab)) tab = 'groups';
-    const body = { groups: renderGroups, draw: renderDraw, lists: renderLists, risk: renderRisk, mail: renderMail, access: renderAccess, dupes: renderDupes }[tab]();
+    const body = { groups: renderGroups, draw: renderDraw, lists: renderLists, risk: renderRisk, mail: renderMail, access: renderAccess, dupes: renderDupes, docs: renderDocs }[tab]();
     app.innerHTML = `<div class="no-print">${head('Įrankiai', esc(curClass().name))}</div>` +
       `<div class="tool-tabs no-print">${tabs.map(([k, l]) => `<button class="btn ${tab === k ? 'primary' : ''}" data-act="tool-tab" data-t="${k}">${l}</button>`).join('')}</div>` + body;
   }
@@ -684,6 +760,23 @@ const Tools = (() => {
       case 'tool-pick-all': S.excl.clear(); document.querySelectorAll('#tPick input[data-tx]').forEach((i) => { i.checked = true; }); pickCount(); return true;
       case 'tool-pick-none': document.querySelectorAll('#tPick input[data-tx]').forEach((i) => { i.checked = false; S.excl.add(i.dataset.tx); }); pickCount(); return true;
       case 'tool-print': printPage('print-tool', { groups: (G.res && G.res.title) || 'Grupės', lists: 'Sąrašas', risk: 'Rizikos sąrašas' }[el.dataset.t] + ' · ' + comName(cid())); return true;
+      case 'tool-docx':
+        if (el.dataset.t === 'docs') docDocx();
+        else if (el.dataset.t === 'lists') listDocx();
+        return true;
+      case 'tool-doc-print': docPrint(); return true;
+      case 'tool-doc-edit': F.edit = true; F.editDoc = F.doc; F.draft = {}; render(); return true;
+      case 'tool-doc-close': F.edit = false; F.draft = {}; render(); return true;
+      case 'tool-doc-save': docSave(); return true;
+      case 'tool-doc-reset': F.draft[F.editDoc] = Forms.DEFAULTS[F.editDoc]; render(); return true;
+      case 'tool-student-docs': {
+        const s = state.students.find((x) => x.id === el.dataset.sid);
+        if (!s) return true;
+        if (!(s.classIds || []).includes(cid()) && (s.classIds || []).length) state.currentClassId = s.classIds[0];
+        S.src = 'all'; S.grade = ''; S.skip = false; S.key = cid() + '|all'; F.blank = false;
+        S.excl = new Set(base().filter((x) => x.id !== s.id).map((x) => x.id));
+        tab = 'docs'; view = 'tools'; document.getElementById('cardDialog').close(); render(); window.scrollTo(0, 0); return true;
+      }
       case 'tool-csv': { const c = csvFor(el.dataset.t); if (c) { logClient('export-tool', c[0]); download(`${c[0].replace(/[^\p{L}\p{N}]+/gu, '_')}-${today()}.csv`, c[1]); } return true; }
       case 'tool-merge': merge(el.closest('.dup')); return true;
       case 'tool-ignore': X.ignore.add(el.dataset.ck); try { localStorage.setItem(IGN_KEY, JSON.stringify([...X.ignore])); } catch (e) { /* ignore */ } render(); return true;
@@ -735,9 +828,12 @@ const Tools = (() => {
     if (!OBJ[o]) return;
     OBJ[o][k] = t.type === 'checkbox' ? t.checked : t.type === 'number' ? Number(t.value) : t.value;
     if (o === 'L' && k === 'tpl') applyTpl();
+    if (o === 'L' && k === 'nameFmt' && ['Vardas, pavardė', 'Pavardė, vardas', 'Vardas Pavardė', 'Pavardė Vardas', ''].includes(L.hName)) L.hName = L.nameFmt === 'lf' ? 'Pavardė, vardas' : 'Vardas, pavardė';
     if (o === 'M' && k === 'tplId') applyMailTpl();
     render();
   });
+  /* Dokumentų tekstų juodraštis saugomas rašant, be perpiešimo. */
+  document.addEventListener('input', (ev) => { const t = ev.target; if (t.dataset && t.dataset.fdraft) F.draft[t.dataset.fdraft] = t.value; });
   /* Laiško tema, tekstas ir bandomasis adresas saugomi rašant, be perpiešimo (kad nešokinėtų žymeklis ir nepasimestų paspaudimas ant mygtuko). */
   document.addEventListener('input', (ev) => {
     const t = ev.target;
@@ -749,7 +845,7 @@ const Tools = (() => {
 
   function reset(hard) {
     saved = null; savedSt = 'idle'; savedErr = ''; tpls = []; mailTpls = null; mailTplSt = 'idle'; A.codes = null; A.st = 'idle';
-    if (hard) { G.res = null; D.drawn = []; D.hist = []; D.last = []; S.excl.clear(); S.src = 'all'; S.grade = ''; L.tpl = ''; M.tplId = ''; M.subject = ''; M.body = ''; M.status = ''; M.bad = false; M.onlyRisk = false; M.to = 'student'; }
+    if (hard) { G.res = null; D.drawn = []; D.hist = []; D.last = []; S.excl.clear(); S.src = 'all'; S.grade = ''; F.edit = false; F.draft = {}; L.tpl = ''; M.tplId = ''; M.subject = ''; M.body = ''; M.status = ''; M.bad = false; M.onlyRisk = false; M.to = 'student'; }
   }
 
   return { render: renderPage, act, reset, calendar: calendarCard };
