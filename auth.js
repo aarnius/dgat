@@ -143,7 +143,7 @@ const Auth = (() => {
     side.innerHTML = '';
     const first = needsSetup;
     app.innerHTML = `<div class="login-wrap"><div class="login-card">
-      <span class="logo">${ICON.check}</span>
+      <span class="logo logo-mt"><img class="logo-img" src="/icon-192.png" alt="" width="52" height="52"></span>
       <h1>${first ? 'Sveiki atvykę' : 'Prisijungimas'}</h1>
       <p class="muted">${first ? 'Sukurkite pagrindinę superadministratoriaus paskyrą. Ji galės kurti vartotojus ir roles.' : 'Prisijunkite prie lankomumo žurnalo.'}</p>
       <form data-form="${first ? 'setup' : 'login'}" class="dlg" style="padding:0">
@@ -164,7 +164,7 @@ const Auth = (() => {
     document.body.classList.add('auth-mode');
     side.innerHTML = '';
     app.innerHTML = `<div class="login-wrap"><div class="login-card">
-      <span class="logo">${ICON.check}</span>
+      <span class="logo logo-mt"><img class="logo-img" src="/icon-192.png" alt="" width="52" height="52"></span>
       <h1>Susikurkite slaptažodį</h1>
       <p class="muted">${esc(me.name)}, prisijungėte su laikinu slaptažodžiu. Prieš tęsdami susikurkite savo slaptažodį.</p>
       <form data-form="forcepw" class="dlg" style="padding:0">
