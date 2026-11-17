@@ -420,7 +420,7 @@ th.selcol, td.selcol { width: 34px; padding-right: 0; }
 }
 
 /* ---------- v10: vidiniai langai, paieška, įrankiai ---------- */
-[hidden] { display: none !important; }
+[hidden], .dlg label.check[hidden], .check[hidden] { display: none !important; }
 #uiDialog { width: min(440px, 92vw); }
 #uiDialog .ui-card { padding: 24px; }
 #uiDialog h3 { margin: 0 0 8px; font-size: 1.15rem; letter-spacing: -0.02em; }
