@@ -15,6 +15,7 @@ const Reg = (() => {
   const nextNo = (kind) => { const re = new RegExp('^' + PREFIX[kind] + '-(\\d+)$'); const used = new Set(E.map((e) => e.docNo)); let n = 0; E.forEach((e) => { const m = re.exec(e.docNo); if (m) n = Math.max(n, +m[1]); }); n++; while (used.has(PREFIX[kind] + '-' + String(n).padStart(3, '0'))) n++; return PREFIX[kind] + '-' + String(n).padStart(3, '0'); };
   const kname = (k) => (KINDS.find((x) => x[0] === k) || [0, k])[1];
   let E = [], st = 'idle', err = '';
+  const SEL = new Set();
   let f = { kind: '', year: '', status: 'active', q: '' };
   const canEdit = () => Auth.can('register.edit');
 
@@ -32,7 +33,7 @@ const Reg = (() => {
   const ensure = () => { if (st === 'idle' && Auth.can('register.view')) load(); };
 
   const reasonsHtml = (kind, sel) => (REASONS[kind] || []).map((r, i) => `<label class="check"><input type="checkbox" name="reason" value="${esc(r)}" ${sel.includes(r) ? 'checked' : ''}> ${esc(r)}</label>`).join('');
-  const rowHtml = (e) => `<tr class="${e.status === 'void' ? 'muted' : ''}"><td class="num"><b>${e.sysNo}</b></td><td class="nowrap">${esc(e.docNo)}</td><td>${esc(kname(e.kind))}</td>
+  const rowHtml = (e) => `<tr class="${e.status === 'void' ? 'muted' : ''}">${Auth.can('register.delete') ? `<td><input type="checkbox" data-regsel="${e.id}" ${SEL.has(e.id) ? 'checked' : ''} aria-label="Pažymėti"></td>` : ''}<td class="num"><b>${e.sysNo}</b></td><td class="nowrap">${esc(e.docNo)}</td><td>${esc(kname(e.kind))}</td>
     <td>${e.name ? esc(e.name) + (e.grade ? ' <small class="muted">' + esc(e.grade) + '</small>' : '') : '–'}</td><td class="nowrap">${esc(e.date)}</td>
     <td>${(e.reasons || []).map((r) => '☒ ' + esc(r)).join('<br>') || '–'}${e.details ? `<div class="muted"><small>${esc(e.details)}</small></div>` : ''}</td>
     <td class="nowrap">${e.kind === 'warn' ? (e.status === 'void' ? '' : e.validUntil ? esc(e.validUntil) : '–') : ''}</td>
@@ -54,12 +55,13 @@ const Reg = (() => {
     const warnBox = [...risk.values()].filter((r) => r.n >= 2);
     app.innerHTML = head('Registras', 'Visų dokumentų numeriai: sistemos Nr., tipas, kam ir dėl ko.', canEdit() ? `<button class="btn primary" data-act="reg-new">${ICON.plus} Naujas numeris</button> <button class="btn" data-act="reg-csv">CSV</button>` : '<button class="btn" data-act="reg-csv">CSV</button>')
       + (warnBox.length ? `<div class="card"><b>Dėmesio:</b> ${warnBox.map((r) => esc(r.name) + ' (' + r.n + ' galiojantys įspėjimai)').join('; ')} – pagal įstatų 6.2.1 p. yra pagrindas svarstyti šalinimą.</div>` : '')
+      + (Auth.can('register.delete') ? `<div class="card bulkbar2" ${SEL.size ? '' : 'hidden'}><b>Pažymėta: ${SEL.size}</b> <button class="btn danger" data-act="reg-delete">Ištrinti pažymėtus</button> <button class="btn" data-act="reg-unsel">Nuimti žymėjimą</button></div>` : '')
       + `<div class="card"><div class="tool-opts">
         <label>Tipas<select data-reg="kind"><option value="">Visi</option>${KINDS.map(([k, l]) => `<option value="${k}" ${f.kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         <label>Metai<select data-reg="year"><option value="">Visi</option>${years.map((y) => `<option ${f.year === y ? 'selected' : ''}>${y}</option>`).join('')}</select></label>
         <label>Būsena<select data-reg="status"><option value="">Visos</option><option value="active" ${f.status === 'active' ? 'selected' : ''}>Galioja</option><option value="void" ${f.status === 'void' ? 'selected' : ''}>Panaikintos</option></select></label>
         <label>Paieška<input data-reg="q" value="${esc(f.q)}" placeholder="Vardas, numeris, tekstas…"></label></div>
-      ${st === 'loading' || st === 'idle' ? '<p class="muted">Kraunama…</p>' : st === 'err' ? `<p class="error">${esc(err)}</p>` : rows.length ? `<div class="table-wrap"><table><thead><tr><th class="num">Sist. Nr.</th><th>Dok. Nr.</th><th>Tipas</th><th>Kam</th><th>Data</th><th>Dėl ko</th><th>Galioja iki</th><th>Būsena</th><th></th></tr></thead><tbody>${rows.map(rowHtml).join('')}</tbody></table></div>` : '<p class="muted">Įrašų nėra.</p>'}</div>`;
+      ${st === 'loading' || st === 'idle' ? '<p class="muted">Kraunama…</p>' : st === 'err' ? `<p class="error">${esc(err)}</p>` : rows.length ? `<div class="table-wrap"><table><thead><tr>${Auth.can('register.delete') ? `<th><input type="checkbox" data-regall ${rows.length && rows.every((e) => SEL.has(e.id)) ? 'checked' : ''} aria-label="Pažymėti visus"></th>` : ''}<th class="num">Sist. Nr.</th><th>Dok. Nr.</th><th>Tipas</th><th>Kam</th><th>Data</th><th>Dėl ko</th><th>Galioja iki</th><th>Būsena</th><th></th></tr></thead><tbody>${rows.map(rowHtml).join('')}</tbody></table></div>` : '<p class="muted">Įrašų nėra.</p>'}</div>`;
   }
 
   /* ---------- langas: naujas numeris / taisymas ---------- */
@@ -180,6 +182,16 @@ const Reg = (() => {
     switch (a) {
       case 'reg-new': openNew(); return true;
       case 'reg-warn': document.getElementById('cardDialog').close(); openNew({ kind: 'warn', sid: el.dataset.sid }); return true;
+      case 'reg-unsel': SEL.clear(); render(); return true;
+      case 'reg-delete': {
+        if (!Auth.can('register.delete') || !SEL.size) return true;
+        const ids = [...SEL];
+        UI.confirm(`Ištrinti ${ids.length} registro įrašus visam laikui? Šio veiksmo atšaukti negalima.`).then(async (ok) => {
+          if (!ok) return;
+          try { const r = await api('/api/register', { action: 'delete', ids }); E = r.entries; SEL.clear(); toast('Ištrinta įrašų: ' + r.deleted); render(); } catch (x) { toast(x.message); }
+        });
+        return true;
+      }
       case 'reg-close': dlg && dlg.close(); return true;
       case 'reg-csv': csv(); return true;
       case 'reg-doc': { const e = byId(); if (e) docFor(e); return true; }
@@ -197,6 +209,11 @@ const Reg = (() => {
       default: return false;
     }
   }
+  document.addEventListener('change', (ev) => {
+    const t = ev.target; if (!t || !t.dataset) return;
+    if (t.dataset.regsel) { if (t.checked) SEL.add(t.dataset.regsel); else SEL.delete(t.dataset.regsel); render(); }
+    else if ('regall' in t.dataset) { filtered().forEach((e) => { if (t.checked) SEL.add(e.id); else SEL.delete(e.id); }); render(); }
+  });
   document.addEventListener('input', (ev) => {
     const k = ev.target && ev.target.dataset && ev.target.dataset.reg; if (!k) return;
     f[k] = ev.target.value;
