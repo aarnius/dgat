@@ -10,6 +10,9 @@ const Reg = (() => {
     cert: ['Dalyvavimo Taryboje pažyma', 'Kita'], minutes: ['Eilinis posėdis', 'Neeilinis posėdis'], plan: ['Renginys', 'Projektas'], other: ['Kita'],
   };
   const GROUP = ['minutes', 'plan', 'other'];
+  const PREFIX = { warn: 'ISP', talk: 'MP', remove: 'NP', join: 'PRM', rejoin: 'GRZ', leave: 'NI', cert: 'PZ', minutes: 'PR', plan: 'PLN', other: 'KT' };
+  /* Kito automatinio numerio peržiūra (pvz. ISP-004): didžiausias to tipo numeris + 1. */
+  const nextNo = (kind) => { const re = new RegExp('^' + PREFIX[kind] + '-(\\d+)$'); const used = new Set(E.map((e) => e.docNo)); let n = 0; E.forEach((e) => { const m = re.exec(e.docNo); if (m) n = Math.max(n, +m[1]); }); n++; while (used.has(PREFIX[kind] + '-' + String(n).padStart(3, '0'))) n++; return PREFIX[kind] + '-' + String(n).padStart(3, '0'); };
   const kname = (k) => (KINDS.find((x) => x[0] === k) || [0, k])[1];
   let E = [], st = 'idle', err = '';
   let f = { kind: '', year: '', status: 'active', q: '' };
@@ -65,7 +68,10 @@ const Reg = (() => {
     if (!dlg) {
       dlg = document.createElement('dialog'); dlg.id = 'regDialog'; document.body.appendChild(dlg);
       dlg.addEventListener('submit', onSubmit);
-      dlg.addEventListener('change', (ev) => { if (ev.target.name === 'kind') fillKind(ev.target.value); });
+      dlg.addEventListener('change', (ev) => {
+        if (ev.target.name === 'kind') fillKind(ev.target.value);
+        if (ev.target.name === 'nmode') dlg.querySelector('#regDocNo').style.display = ev.target.value === 'manual' ? '' : 'none';
+      });
     }
     return dlg;
   }
@@ -74,6 +80,8 @@ const Reg = (() => {
     const box = dlg.querySelector('#regReasons'); if (box) box.innerHTML = reasonsHtml(kind, []);
     const who = dlg.querySelector('#regWho'); if (who) who.style.display = GROUP.includes(kind) ? 'none' : '';
     const nm = dlg.querySelector('#regName'); if (nm) nm.style.display = GROUP.includes(kind) ? '' : 'none';
+    const nx = dlg.querySelector('#regNext'); if (nx) nx.textContent = nextNo(kind);
+    const dn = dlg.querySelector('#regDocNo'); if (dn) dn.placeholder = 'pvz. ' + PREFIX[kind] + '-004';
     const vu = dlg.querySelector('#regValid'); if (vu) vu.style.display = kind === 'warn' ? '' : 'none';
   }
   function openNew(opts) {
@@ -85,6 +93,10 @@ const Reg = (() => {
       <label>Data<input type="date" name="date" value="${date}" required></label>
       <fieldset class="classpick" id="regWho"><legend>Kam (narys)</legend>${UI.filterBox({ scope: '#regWho', rows: 'label.check', placeholder: 'Ieškoti nario…' })}
         ${list.map((s) => `<label class="check"><input type="${opts.sid ? 'checkbox' : 'checkbox'}" name="stu" value="${s.id}" ${opts.sid === s.id ? 'checked' : ''}> ${esc(displayName(s))}${s.grade ? ' <small class="muted">' + esc(s.grade) + '</small>' : ''}</label>`).join('')}</fieldset>
+      <fieldset class="classpick" style="max-height:none"><legend>Numeris</legend>
+        <label class="check"><input type="radio" name="nmode" value="auto" checked> Sugeneruoti automatiškai: <b id="regNext">${nextNo(kind)}</b></label>
+        <label class="check"><input type="radio" name="nmode" value="manual"> Įrašyti pačiam</label>
+        <input name="docNo" maxlength="30" placeholder="pvz. ${PREFIX[kind]}-004" id="regDocNo" style="display:none"></fieldset>
       <label id="regName" style="display:none">Pavadinimas / kam<input name="name" maxlength="200" placeholder="pvz. Tarybos posėdis 2026-11-17"></label>
       <fieldset class="classpick" style="max-height:none"><legend>Dėl ko (pažymėkite)</legend><div id="regReasons">${reasonsHtml(kind, [])}</div></fieldset>
       <label>Aprašymas / pastabos<textarea name="details" rows="3" maxlength="2000"></textarea></label>
@@ -101,6 +113,7 @@ const Reg = (() => {
     dialog().innerHTML = `<div class="dlg"><div class="dlg-head"><h3>Taisyti ${esc(e.docNo)}</h3><button type="button" class="icon-btn" data-act="reg-close" aria-label="Uždaryti">&times;</button></div>
       <form data-regform="edit"><input type="hidden" name="id" value="${e.id}">
       <p class="muted">${esc(kname(e.kind))}${e.name ? ' · ' + esc(e.name) : ''}</p>
+      <label>Numeris<input name="docNo" value="${esc(e.docNo)}" maxlength="30" required></label>
       <label>Data<input type="date" name="date" value="${e.date}" required></label>
       <fieldset class="classpick" style="max-height:none"><legend>Dėl ko</legend>${reasonsHtml(e.kind, e.reasons || [])}</fieldset>
       <label>Aprašymas / pastabos<textarea name="details" rows="3" maxlength="2000">${esc(e.details)}</textarea></label>
@@ -115,11 +128,12 @@ const Reg = (() => {
     const reasons = fd.getAll('reason');
     try {
       let r;
-      if (kind === 'edit') r = await api('/api/register', { action: 'update', id: fd.get('id'), date: fd.get('date'), reasons, details: fd.get('details'), validUntil: fd.get('validUntil') || '' });
+      if (kind === 'edit') r = await api('/api/register', { action: 'update', id: fd.get('id'), docNo: fd.get('docNo'), date: fd.get('date'), reasons, details: fd.get('details'), validUntil: fd.get('validUntil') || '' });
       else {
+        if (fd.get('nmode') === 'manual' && !String(fd.get('docNo') || '').trim()) { errEl.textContent = 'Įrašykite numerį.'; return; }
         const k = fd.get('kind'), ids = GROUP.includes(k) ? [] : fd.getAll('stu');
         if (!GROUP.includes(k) && !ids.length) { errEl.textContent = 'Pasirinkite bent vieną narį.'; return; }
-        r = await api('/api/register', { action: 'issue', kind: k, date: fd.get('date'), reasons, details: fd.get('details'), validUntil: k === 'warn' ? fd.get('validUntil') : '',
+        r = await api('/api/register', { action: 'issue', kind: k, date: fd.get('date'), reasons, details: fd.get('details'), validUntil: k === 'warn' ? fd.get('validUntil') : '', docNo: fd.get('nmode') === 'manual' ? fd.get('docNo') : '',
           items: ids.length ? ids.map((studentId) => ({ studentId })) : [{ name: fd.get('name') || '' }] });
         toast('Išduota: ' + r.issued.map((x) => x.docNo).join(', '));
         if (r.issued[0]) window.__regLast = r.issued;

@@ -1,7 +1,7 @@
 import { db, handler, HttpError, getUser, requireUser, requirePerm, logEvent, newId, str } from '../lib/server.js';
 
 /* REGISTRAS: visų dokumentų (įspėjimų, priėmimo, išėjimo, pokalbių ir t. t.) numeracija. sys_no – bendras sistemos numeris, doc_no – numeris pagal tipą ir metus. */
-const KINDS = { join: 'P', rejoin: 'G', leave: 'I', warn: 'Į', remove: 'Š', talk: 'PK', cert: 'PZ', minutes: 'PR', plan: 'PL', other: 'K' };
+const KINDS = { warn: 'ISP', talk: 'MP', remove: 'NP', join: 'PRM', rejoin: 'GRZ', leave: 'NI', cert: 'PZ', minutes: 'PR', plan: 'PLN', other: 'KT' };
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const needDate = (v) => { if (!DATE_RE.test(String(v))) throw new HttpError(400, 'Netinkama data.'); return String(v); };
 const schoolYearEnd = (d) => { const y = +d.slice(0, 4), m = +d.slice(5, 7); return `${m >= 9 ? y + 1 : y}-08-31`; };
@@ -12,24 +12,44 @@ async function listRows(sql) {
     FROM register_entries ORDER BY sys_no DESC LIMIT 5000`;
 }
 
+const pad = (n) => String(n).padStart(3, '0');
+const needDocNo = (v) => {
+  const x = str(v, 30).toUpperCase().replace(/\s+/g, '');
+  if (!/^[\p{L}\p{N}._\/-]{2,30}$/u.test(x)) throw new HttpError(400, 'Netinkamas numeris (pvz. ISP-004).');
+  return x;
+};
+
 async function issue(sql, me, e, st) {
   const kind = String(e.kind);
   if (!KINDS[kind]) throw new HttpError(400, 'Nežinomas tipas.');
-  const date = needDate(e.date), year = +date.slice(0, 4);
+  const date = needDate(e.date), year = +date.slice(0, 4), prefix = KINDS[kind];
   const reasons = (Array.isArray(e.reasons) ? e.reasons : []).map((x) => str(x, 200)).filter(Boolean).slice(0, 20);
   const details = str(e.details, 2000);
-  let validUntil = e.validUntil ? needDate(e.validUntil) : (kind === 'warn' ? schoolYearEnd(date) : null);
+  const validUntil = e.validUntil ? needDate(e.validUntil) : (kind === 'warn' ? schoolYearEnd(date) : null);
+  const manual = e.docNo ? needDocNo(e.docNo) : '';
   const id = newId('r');
   for (let i = 0; i < 6; i++) {
+    let docNo = manual, seq = null;
+    if (manual) {
+      const m = new RegExp('^' + prefix + '-(\\d+)$').exec(manual);
+      if (m) seq = +m[1];
+    } else {
+      const [{ n }] = await sql`SELECT COALESCE(MAX(seq),0) AS n FROM register_entries WHERE kind = ${kind}`;
+      let k = +n + 1;
+      for (;;) { const [x] = await sql`SELECT 1 AS x FROM register_entries WHERE doc_no = ${prefix + '-' + pad(k)}`; if (!x) break; k++; }
+      seq = k; docNo = prefix + '-' + pad(k);
+    }
     try {
       const [r] = await sql`INSERT INTO register_entries (id, sys_no, kind, year, seq, doc_no, doc_date, student_id, student_name, grade, reasons, details, valid_until, created_by, created_by_name)
-        SELECT ${id}, (SELECT COALESCE(MAX(sys_no),0)+1 FROM register_entries), ${kind}, ${year}::int, s.n,
-          ${KINDS[kind]} || '-' || ${year}::text || '-' || lpad(s.n::text, 3, '0'),
-          ${date}::date, ${st ? st.id : null}, ${st ? st.name : str(e.name, 200)}, ${st ? st.grade : ''}, ${reasons}::text[], ${details}, ${validUntil}::date, ${me.id}, ${me.name}
-        FROM (SELECT COALESCE(MAX(seq),0)+1 AS n FROM register_entries WHERE kind = ${kind} AND year = ${year}) s
+        VALUES (${id}, (SELECT COALESCE(MAX(sys_no),0)+1 FROM register_entries), ${kind}, ${year}::int, ${seq}, ${docNo}, ${date}::date, ${st ? st.id : null}, ${st ? st.name : str(e.name, 200)}, ${st ? st.grade : ''},
+          ${reasons}::text[], ${details}, ${validUntil}::date, ${me.id}, ${me.name})
         RETURNING id, sys_no AS "sysNo", doc_no AS "docNo"`;
       return r;
     } catch (err) {
+      if (String(err && err.code) === '23505' && manual && i === 0) {
+        const [dup] = await sql`SELECT 1 AS x FROM register_entries WHERE doc_no = ${manual}`;
+        if (dup) throw new HttpError(409, 'Numeris ' + manual + ' jau panaudotas.');
+      }
       if (String(err && err.code) !== '23505' || i === 5) throw err;
     }
   }
@@ -45,6 +65,7 @@ export default handler(async (req, res, body) => {
   switch (body.action) {
     case 'issue': {
       const items = Array.isArray(body.items) && body.items.length ? body.items.slice(0, 200) : [{}];
+      if (body.docNo && items.length > 1) throw new HttpError(400, 'Rankiniu būdu galima įrašyti tik vieną numerį – pasirinkite vieną narį arba numerius generuokite automatiškai.');
       const out = [];
       for (const it of items) {
         let st = null;
@@ -63,7 +84,13 @@ export default handler(async (req, res, body) => {
       const id = str(body.id, 40);
       const reasons = (Array.isArray(body.reasons) ? body.reasons : []).map((x) => str(x, 200)).filter(Boolean).slice(0, 20);
       const vu = body.validUntil ? needDate(body.validUntil) : null;
-      const [r] = await sql`UPDATE register_entries SET reasons = ${reasons}::text[], details = ${str(body.details, 2000)}, doc_date = ${needDate(body.date)}::date, valid_until = ${vu}::date WHERE id = ${id} RETURNING doc_no`;
+      let docNo = null;
+      if (body.docNo) {
+        docNo = needDocNo(body.docNo);
+        const [dup] = await sql`SELECT 1 AS x FROM register_entries WHERE doc_no = ${docNo} AND id <> ${id}`;
+        if (dup) throw new HttpError(409, 'Numeris ' + docNo + ' jau panaudotas.');
+      }
+      const [r] = await sql`UPDATE register_entries SET doc_no = COALESCE(${docNo}, doc_no), reasons = ${reasons}::text[], details = ${str(body.details, 2000)}, doc_date = ${needDate(body.date)}::date, valid_until = ${vu}::date WHERE id = ${id} RETURNING doc_no`;
       if (!r) throw new HttpError(404, 'Įrašas nerastas.');
       await logEvent(sql, me, 'register', `Registras: pakeistas ${r.doc_no}`, { id });
       return { ok: true, entries: await listRows(sql) };
