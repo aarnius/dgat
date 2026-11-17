@@ -37,7 +37,7 @@ const Reg = (() => {
     <td>${(e.reasons || []).map((r) => '☒ ' + esc(r)).join('<br>') || '–'}${e.details ? `<div class="muted"><small>${esc(e.details)}</small></div>` : ''}</td>
     <td class="nowrap">${e.kind === 'warn' ? (e.status === 'void' ? '' : e.validUntil ? esc(e.validUntil) : '–') : ''}</td>
     <td>${e.status === 'void' ? `<span class="rate na">panaikinta</span><div class="muted"><small>${esc(e.voidReason)}</small></div>` : e.kind === 'warn' && !validWarn(e) ? '<span class="rate na">nebegalioja</span>' : '<span class="rate good">galioja</span>'}</td>
-    <td class="nowrap"><button class="btn small" data-act="reg-doc" data-rid="${e.id}">.docx</button>${canEdit() ? ` <button class="btn small" data-act="reg-edit" data-rid="${e.id}">Taisyti</button> ${e.status === 'void' ? `<button class="btn small" data-act="reg-restore" data-rid="${e.id}">Atkurti</button>` : `<button class="btn small danger" data-act="reg-void" data-rid="${e.id}">Naikinti</button>`}` : ''}</td></tr>`;
+    <td class="nowrap"><button class="btn small" data-act="reg-doc" data-rid="${e.id}">.docx</button>${canEdit() ? ` <button class="btn small" data-act="reg-edit" data-rid="${e.id}">Taisyti</button>` : ''}${Auth.can('register.void') ? ` ${e.status === 'void' ? `<button class="btn small" data-act="reg-restore" data-rid="${e.id}">Atkurti</button>` : `<button class="btn small danger" data-act="reg-void" data-rid="${e.id}">Negaliojanti</button>`}` : ''}</td></tr>`;
   const filtered = () => {
     const q = UI.norm ? UI.norm(f.q) : f.q.toLowerCase();
     return E.filter((e) => (!f.kind || e.kind === f.kind) && (!f.year || String(e.year) === f.year) && (!f.status || e.status === f.status || (f.status === 'active' && e.status === 'active'))
@@ -185,14 +185,15 @@ const Reg = (() => {
       case 'reg-doc': { const e = byId(); if (e) docFor(e); return true; }
       case 'reg-edit': { const e = byId(); if (e) openEdit(e); return true; }
       case 'reg-void': {
+        if (!Auth.can('register.void')) { toast('Neturite teisės'); return true; }
         const e = byId(); if (!e) return true;
-        UI.prompt('Panaikinti ' + e.docNo, '', { label: 'Panaikinimo priežastis', okText: 'Panaikinti', max: 300 }).then(async (reason) => {
+        UI.prompt('Padaryti negaliojančiu: ' + e.docNo, '', { label: 'Priežastis', okText: 'Padaryti negaliojančiu', max: 300 }).then(async (reason) => {
           if (!reason) return;
           try { E = (await api('/api/register', { action: 'void', id: e.id, reason })).entries; render(); } catch (x) { toast(x.message); }
         });
         return true;
       }
-      case 'reg-restore': { api('/api/register', { action: 'restore', id: el.dataset.rid }).then((r) => { E = r.entries; render(); }).catch((x) => toast(x.message)); return true; }
+      case 'reg-restore': { if (!Auth.can('register.void')) { toast('Neturite teisės'); return true; } api('/api/register', { action: 'restore', id: el.dataset.rid }).then((r) => { E = r.entries; render(); }).catch((x) => toast(x.message)); return true; }
       default: return false;
     }
   }

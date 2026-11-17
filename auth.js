@@ -9,7 +9,7 @@ const PERMS = [
   { g: 'Ataskaitos', items: [['reports.view', 'Matyti ataskaitas'], ['reports.export', 'Eksportuoti ataskaitas (CSV)']] },
   { g: 'Duomenys', items: [['data.view', 'Atidaryti skiltį „Duomenys“'], ['data.backup', 'Atsisiųsti atsarginę kopiją'], ['data.restore', 'Atkurti iš kopijos'], ['data.wipe', 'Ištrinti visus duomenis']] },
   { g: 'Įrankiai', items: [['tools.view', 'Naudoti įrankius (grupės, traukimas, sąrašai, rizikos sąrašas, dublikatai)'], ['tools.save', 'Išsaugoti ir ištrinti sugrupavimus']] },
-  { g: 'Registras', items: [['register.view', 'Matyti registrą (dokumentų numeriai, įspėjimai)'], ['register.edit', 'Išduoti numerius, skirti įspėjimus, taisyti ir naikinti registro įrašus']] },
+  { g: 'Registras', items: [['register.view', 'Matyti registrą (dokumentų numeriai, įspėjimai)'], ['register.edit', 'Išduoti numerius, skirti įspėjimus ir taisyti registro įrašus'], ['register.void', 'Padaryti registro įrašus negaliojančius (ir atkurti)']] },
   { g: 'LOG (pakeitimų istorija)', items: [['logs.view', 'Matyti LOG'], ['logs.undo', 'Atšaukti pakeitimus (Undo)'], ['logs.clear', 'Valyti LOG']] },
   { g: 'Administravimas', items: [['users.manage', 'Valdyti vartotojus'], ['roles.manage', 'Valdyti roles ir leidimus']] },
 ];
