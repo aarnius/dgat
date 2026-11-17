@@ -247,7 +247,8 @@ const Tools = (() => {
   }
 
   /* ---------- dokumentai: priėmimo, grįžimo, išėjimo, pašalinimo, pokalbio lapai ---------- */
-  const docOpts = () => (s) => ({ date: F.date || today(), coms: s ? (s.classIds || []).map(comName).filter(Boolean).join(', ') : '', rate: s ? statsAll(s).rate : null });
+  const docOpts = () => (s) => ({ date: F.date || today(), coms: s ? (s.classIds || []).map(comName).filter(Boolean).join(', ') : '', rate: s ? statsAll(s).rate : null, author: authorName() });
+  const authorName = () => { const u = Auth.user(); return u ? u.name + (u.roleName ? ', ' + u.roleName : '') : ''; };
   const docList = () => (F.blank ? [] : pool());
   function renderDocs() {
     if (saved === null && savedSt === 'idle') loadSaved();
@@ -258,6 +259,7 @@ const Tools = (() => {
     const preview = Forms.html(Forms.blocks(F.doc, first, o(first)));
     const editor = F.edit && canEdit ? `<div class="card no-print"><h2 style="margin-top:0">Dokumentų tekstų redagavimas</h2>
       <div class="tool-opts"><label>Organizacijos pavadinimas ({taryba})<input data-fdraft="org" value="${esc(F.draft.org !== undefined ? F.draft.org : Forms.org())}" maxlength="150"></label>
+      <label>Tarybos pirmininko (-ės) vardas, pavardė ({pirmininkas})<input data-fdraft="chair" value="${esc(F.draft.chair !== undefined ? F.draft.chair : Forms.chair())}" maxlength="150"></label>
       <label>Dokumentas<select data-tool="F.editDoc">${Forms.DOCS.map(([k, l]) => `<option value="${k}" ${F.editDoc === k ? 'selected' : ''}>${esc(l)}${Forms.isCustom(k) ? ' ✎' : ''}</option>`).join('')}</select></label></div>
       <textarea class="doc-edit" data-fdraft="${F.editDoc}" rows="22" spellcheck="true">${esc(F.draft[F.editDoc] !== undefined ? F.draft[F.editDoc] : Forms.text(F.editDoc))}</textarea>
       <p class="sub" style="margin:8px 0">Žymėjimas: <code>## </code> pavadinimas · <code>### </code> paantraštė · <code># </code> skyrius · <code>- </code> punktas · <code>~ </code> parašo eilutė · <code>---</code> naujas lapas · <code>**paryškinta**</code><br>
@@ -291,6 +293,7 @@ const Tools = (() => {
     const f = Object.assign({}, { org: Forms.org() });
     Forms.DOCS.forEach(([k]) => { f[k] = F.draft[k] !== undefined ? F.draft[k] : (Forms.isCustom(k) ? Forms.text(k) : ''); });
     if (F.draft.org !== undefined) f.org = F.draft.org;
+    f.chair = F.draft.chair !== undefined ? F.draft.chair : Forms.chair();
     try { const r = await api('/api/tools', { action: 'forms-save', forms: f }); Forms.set(r.forms); F.draft = {}; toast('Tekstai išsaugoti'); } catch (e) { toast(e.message); }
     render();
   }

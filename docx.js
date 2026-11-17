@@ -42,20 +42,22 @@ const Docx = (() => {
   }
   const block = (b, usable) => {
     switch (b.t) {
-      case 'title': return para(b.text, { align: 'center', bold: true, size: 15, after: 240, before: 0 });
-      case 'sub': return para(b.text, { align: 'center', size: 11, after: 200 });
+      case 'title': return para(b.text, { align: 'center', bold: true, size: 13, after: 120, before: 0 });
+      case 'sub': return para(b.text, { align: 'center', bold: true, size: 12, after: 120 });
+      case 'c': return para(b.text, { align: 'center', after: 60 });
+      case 'note': return para(b.text, { size: 9, before: 360, after: 0 });
       case 'h': return para(b.text, { bold: true, size: 12, before: 200, after: 80, keep: true });
       case 'li': return para('•  ' + b.text, { ind: 360, hang: 260, after: 60 });
-      case 'sig': return para(`${b.text} ${'_'.repeat(28)}      Data ${'_'.repeat(14)}`, { before: 320, after: 60 });
+      case 'sig': return para(`${b.text} ${'_'.repeat(22)}`, { before: 320, after: 60, keep: b.keep });
       case 'pb': return '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
       case 'table': return table(b, usable);
-      default: return para(b.text || '', { after: 100 });
+      default: return para(b.text || '', { after: 100, keep: b.keep });
     }
   };
 
   function build(blocks, { landscape = false, font = 'Calibri', size = 11 } = {}) {
     const W = landscape ? 16838 : 11906, H = landscape ? 11906 : 16838, M = 1134, usable = W - 2 * M;
-    const doc = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${blocks.map((b) => block(b, usable)).join('')}<w:sectPr><w:pgSz w:w="${W}" w:h="${H}"${landscape ? ' w:orient="landscape"' : ''}/><w:pgMar w:top="${M}" w:right="${M}" w:bottom="${M}" w:left="${M}" w:header="567" w:footer="567" w:gutter="0"/></w:sectPr></w:body></w:document>`;
+    const doc = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${blocks.map((b, i) => block(blocks[i + 1] && blocks[i + 1].t === 'sig' && b.t !== 'pb' ? { ...b, keep: true } : b.t === 'sig' && blocks[i + 1] && blocks[i + 1].t === 'sig' ? { ...b, keep: true } : b, usable)).join('')}<w:sectPr><w:pgSz w:w="${W}" w:h="${H}"${landscape ? ' w:orient="landscape"' : ''}/><w:pgMar w:top="${M}" w:right="${M}" w:bottom="${M}" w:left="${M}" w:header="567" w:footer="567" w:gutter="0"/></w:sectPr></w:body></w:document>`;
     const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="${font}" w:hAnsi="${font}" w:cs="${font}" w:eastAsia="${font}"/><w:sz w:val="${size * 2}"/><w:lang w:val="lt-LT"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="100" w:line="264" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style></w:styles>`;
     return zip([
       ['[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>'],

@@ -599,8 +599,10 @@ table.sheet.fs-l { font-size: 1.05rem; }
 .doc-edit { width: 100%; font: 0.85rem/1.5 ui-monospace, Menlo, Consolas, monospace; padding: 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); color: var(--text); resize: vertical; }
 .form-sheet { background: #fff; color: #111; max-width: 794px; margin: 0 auto 18px; padding: 48px 56px; border-radius: 10px; border: 1px solid var(--line); box-shadow: var(--shadow); font-size: 0.95rem; line-height: 1.5; }
 .form-sheet p { margin: 0 0 7px; }
-.f-title { text-align: center; font-size: 1.35rem; margin: 0 0 4px; }
-.f-sub { text-align: center; font-size: 1.05rem; margin: 0 0 18px; }
+.f-title { text-align: center; font-size: 1.1rem; margin: 0 0 6px; text-transform: none; }
+.f-sub { text-align: center; font-weight: 700; font-size: 1rem; margin: 0 0 8px; }
+.f-c { text-align: center; margin: 0 0 2px !important; }
+.f-note { font-size: 0.78rem; color: #555; margin-top: 22px !important; }
 .f-h { font-size: 1.05rem; margin: 18px 0 6px; }
 .f-li { padding-left: 22px; text-indent: -14px; }
 .f-li::before { content: "•  "; }

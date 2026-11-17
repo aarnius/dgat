@@ -1,7 +1,7 @@
 /* Dokumentų blankai (priėmimo, grįžimo, išėjimo, pašalinimo, pokalbio lapai).
    Tekstai redaguojami skiltyje Įrankiai → Dokumentai ir saugomi serveryje; čia – numatytieji tekstai ir formatavimas.
-   Tekstų žymėjimas: "## " pavadinimas, "### " paantraštė, "# " skyrius, "- " punktas, "~ " parašo eilutė, "---" naujas lapas, **paryškinta**.
-   Kintamieji: {vardas} {pavarde_vardas} {klase} {komitetai} {el_pastas} {lankomumas} {data} {taryba}. Nežinoma reikšmė paliekama kaip ______ (užpildoma ranka). */
+   Tekstų žymėjimas: "## " pavadinimas, "### " paantraštė, "# " skyrius, "- " punktas, "~ " parašo eilutė, "^ " centruota eilutė, "---" naujas lapas, **paryškinta**.
+   Kintamieji: {vardas} {pavarde_vardas} {klase} {komitetai} {el_pastas} {lankomumas} {data} {data_iso} {taryba} {pirmininkas} {rengejas}. Nežinoma reikšmė paliekama kaip ______ (užpildoma ranka). */
 const Forms = (() => {
   const LINE = '_'.repeat(78);
   const DOCS = [['join', 'Priėmimo lapas'], ['rejoin', 'Grįžimo (priėmimo atgal) lapas'], ['leave', 'Išėjimo lapas'], ['remove', 'Pašalinimo (išmetimo) lapas'], ['talk', 'Pokalbio lapas']];
@@ -10,9 +10,12 @@ Klasė: **{klase}**
 Komitetas (-ai): **{komitetai}**
 El. paštas: **{el_pastas}**`;
   const DEFAULTS = {
-    org: 'Dariaus Girėno gimnazijos mokinių taryba',
+    org: 'Kauno Stepono Dariaus ir Stasio Girėno gimnazijos Mokinių taryba',
     join: `## {taryba}
 ### Priėmimo į tarybą lapas ir nario įsipareigojimas
+^ {data_iso}   Nr. ____________
+^ Kaunas
+
 ${WHO}
 Priėmimo data: **{data}**
 
@@ -33,19 +36,18 @@ Priėmimo data: **{data}**
 - Susirinkimų metu laikomasi tvarkos: telefonai nutildomi, kitam kalbant netrukdoma.
 
 # 3. Įsipareigojimas
-Pasirašydamas (-a) šį lapą patvirtinu, kad susipažinau su organizacijos „{taryba}“ įstatais, nario pareigomis ir dalyvavimo susirinkimuose taisyklėmis ir įsipareigoju jų laikytis. Žinau, kad nesilaikant įstatų ar šių taisyklių galiu būti įspėtas (-a) arba pašalintas (-a) iš tarybos.
+Pasirašydamas (-a) šį lapą patvirtinu, kad susipažinau su organizacijos „{taryba}“ nuostatais (įstatais), nario pareigomis ir dalyvavimo susirinkimuose taisyklėmis ir įsipareigoju jų laikytis. Žinau, kad nesilaikant įstatų ar šių taisyklių galiu būti įspėtas (-a) arba pašalintas (-a) iš tarybos.
 
 # 4. Asmens duomenys
 Sutinku, kad mano vardas, pavardė, klasė, el. paštas, nuotrauka ir lankomumo duomenys būtų tvarkomi tarybos lankomumo sistemoje tarybos veiklai organizuoti pagal sistemoje skelbiamą privatumo politiką.
 
-~ Nario parašas
-~ Tarybos pirmininko parašas
-
-# Tėvų (globėjų) žinojimas (nepilnamečiams)
-Susipažinau ir sutinku, kad mano vaikas būtų organizacijos „{taryba}“ nariu.
-~ Tėvo (motinos, globėjo) vardas, pavardė, parašas`,
+~ Narys (-ė) {vardas}, parašas
+~ Tarybos pirmininkas (-ė) {pirmininkas}, parašas`,
     rejoin: `## {taryba}
 ### Grįžimo į tarybą (priėmimo atgal) lapas
+^ {data_iso}   Nr. ____________
+^ Kaunas
+
 ${WHO}
 Prašymo data: **{data}**
 
@@ -62,16 +64,19 @@ ${LINE}
 - Pasibaigus bandomajam laikotarpiui tarybos pirmininkas kartu su komiteto vadovu įvertina nario aktyvumą ir informuoja jį apie sprendimą.
 
 # 3. Įsipareigojimas
-Pasirašydamas (-a) šį lapą patvirtinu, kad noriu grįžti į organizaciją „{taryba}“, susipažinau su jos įstatais ir taisyklėmis bei įsipareigoju jų laikytis.
+Pasirašydamas (-a) šį lapą patvirtinu, kad noriu grįžti į organizaciją „{taryba}“, susipažinau su jos nuostatais (įstatais) ir taisyklėmis bei įsipareigoju jų laikytis.
 
 # 4. Tarybos sprendimas
 Sprendimas: ☐ priimti  ☐ priimti su bandomuoju laikotarpiu  ☐ nepriimti
 Pastabos: ${LINE}
 
-~ Nario parašas
-~ Tarybos pirmininko parašas`,
+~ Narys (-ė) {vardas}, parašas
+~ Tarybos pirmininkas (-ė) {pirmininkas}, parašas`,
     leave: `## {taryba}
 ### Išėjimo iš tarybos lapas
+^ {data_iso}   Nr. ____________
+^ Kaunas
+
 ${WHO}
 Prašymo data: **{data}**
 
@@ -92,13 +97,13 @@ Išėjimo priežastis (nebūtina nurodyti): ${LINE}
 # 4. Pareiškimas
 Dėkoju už galimybę dalyvauti tarybos veikloje.
 
-~ Nario parašas
-~ Tarybos pirmininko parašas
-
-# Tėvų (globėjų) žinojimas (nepilnamečiams)
-~ Tėvo (motinos, globėjo) vardas, pavardė, parašas`,
+~ Narys (-ė) {vardas}, parašas
+~ Tarybos pirmininkas (-ė) {pirmininkas}, parašas`,
     remove: `## {taryba}
 ### Nario pašalinimo iš tarybos lapas
+^ {data_iso}   Nr. ____________
+^ Kaunas
+
 ${WHO}
 Lankomumo rodiklis: **{lankomumas}**
 Pašalinimo data: **{data}**
@@ -125,11 +130,14 @@ Narys pašalinamas iš tarybos nuo: ______________________
 Narys su sprendimu supažindintas. Per 5 darbo dienas jis turi teisę pateikti raštišką paaiškinimą ar prašymą sprendimą peržiūrėti tarybos pirmininkui arba gimnazijos administracijai. Narys privalo perduoti tarybos turtą ir pradėtas užduotis.
 Nario paaiškinimas (nebūtina): ${LINE}
 
-~ Tarybos pirmininko parašas
-~ Tarybos sekretoriaus parašas
-~ Nario parašas (su sprendimu susipažinau)`,
+~ Tarybos pirmininkas (-ė) {pirmininkas}, parašas
+~ Tarybos sekretorius (-ė), parašas
+~ Susipažinau. Narys (-ė) {vardas}, parašas`,
     talk: `## {taryba}
 ### Motyvacinio pokalbio lapas
+^ {data_iso}   Nr. ____________
+^ Kaunas
+
 ${WHO}
 Lankomumo rodiklis: **{lankomumas}**
 Pokalbio data: **{data}**
@@ -161,14 +169,15 @@ ${LINE}
 Kitas pokalbis / susitarimų peržiūra (data): ______________________
 Jei situacija nesikeičia, narys gauna raštišką įspėjimą ir kviečiamas į pakartotinį pokalbį; toliau gali būti svarstomas klausimas dėl narystės tęsimo.
 
-~ Nario parašas
-~ Pokalbį vedusio asmens parašas`,
+~ Narys (-ė) {vardas}, parašas
+~ Pokalbį vedęs (-usi) asmuo, parašas`,
   };
 
   let saved = {};
   const set = (f) => { saved = f && typeof f === 'object' ? f : {}; };
   const text = (k) => (typeof saved[k] === 'string' && saved[k].trim() ? saved[k] : DEFAULTS[k]);
   const org = () => (typeof saved.org === 'string' && saved.org.trim() ? saved.org.trim() : DEFAULTS.org);
+  const chair = () => (typeof saved.chair === 'string' ? saved.chair.trim() : '');
   const isCustom = (k) => typeof saved[k] === 'string' && saved[k].trim() && saved[k] !== DEFAULTS[k];
 
   const MONTHS = ['sausio', 'vasario', 'kovo', 'balandžio', 'gegužės', 'birželio', 'liepos', 'rugpjūčio', 'rugsėjo', 'spalio', 'lapkričio', 'gruodžio'];
@@ -182,7 +191,8 @@ Jei situacija nesikeičia, narys gauna raštišką įspėjimą ir kviečiamas į
       vardas: s ? v([s.first, s.last].filter(Boolean).join(' ')) : BLANK.repeat(2),
       pavarde_vardas: s ? v([s.last, s.first].filter(Boolean).join(' ')) : BLANK.repeat(2),
       klase: v(s && s.grade), komitetai: v(s && o.coms), el_pastas: v(s && s.email),
-      lankomumas: s && o.rate != null ? o.rate + ' %' : BLANK, data: v(dateLong(o.date)), taryba: org(),
+      lankomumas: s && o.rate != null ? o.rate + ' %' : BLANK, data: v(dateLong(o.date)), data_iso: v(o.date), taryba: org(),
+      pirmininkas: chair() || BLANK, rengejas: o.author || BLANK,
     };
   }
   const fill = (t, vs) => t.replace(/\{(\w+)\}/g, (m, k) => (k in vs ? vs[k] : m));
@@ -194,13 +204,15 @@ Jei situacija nesikeičia, narys gauna raštišką įspėjimą ir kviečiamas į
       const l = raw.replace(/\s+$/, '');
       if (!l.trim()) return;
       if (l === '---') out.push({ t: 'pb' });
-      else if (l.startsWith('### ')) out.push({ t: 'sub', text: l.slice(4) });
-      else if (l.startsWith('## ')) out.push({ t: 'title', text: l.slice(3) });
+      else if (l.startsWith('### ')) out.push({ t: 'sub', text: l.slice(4).toLocaleUpperCase('lt') });
+      else if (l.startsWith('## ')) out.push({ t: 'title', text: l.slice(3).toLocaleUpperCase('lt') });
       else if (l.startsWith('# ')) out.push({ t: 'h', text: l.slice(2) });
       else if (l.startsWith('- ')) out.push({ t: 'li', text: l.slice(2) });
       else if (l.startsWith('~ ')) out.push({ t: 'sig', text: l.slice(2) });
+      else if (l.startsWith('^ ')) out.push({ t: 'c', text: l.slice(2) });
       else out.push({ t: 'p', text: l });
     });
+    if (o.author) out.push({ t: 'note', text: 'Dokumentą parengė: ' + o.author });
     return out;
   }
   const label = (k) => (DOCS.find((d) => d[0] === k) || [0, k])[1];
@@ -222,14 +234,16 @@ Jei situacija nesikeičia, narys gauna raštišką įspėjimą ir kviečiamas į
     bl.forEach((b) => {
       if (b.t === 'pb') out += '</section><section class="form-sheet">';
       else if (b.t === 'title') out += `<h1 class="f-title">${inline(b.text)}</h1>`;
+      else if (b.t === 'c') out += `<p class="f-c">${inline(b.text)}</p>`;
       else if (b.t === 'sub') out += `<p class="f-sub">${inline(b.text)}</p>`;
       else if (b.t === 'h') out += `<h2 class="f-h">${inline(b.text)}</h2>`;
       else if (b.t === 'li') out += `<p class="f-li">${inline(b.text)}</p>`;
-      else if (b.t === 'sig') out += `<p class="f-sig">${inline(b.text)} <span class="f-fill"></span> <span class="f-date">Data <span class="f-fill s"></span></span></p>`;
+      else if (b.t === 'sig') out += `<p class="f-sig">${inline(b.text)} <span class="f-fill"></span></p>`;
+      else if (b.t === 'note') out += `<p class="f-note">${inline(b.text)}</p>`;
       else out += `<p>${inline(b.text)}</p>`;
     });
     return out + '</section>';
   }
 
-  return { DOCS, DEFAULTS, set, text, org, isCustom, label, blocks, many, html, dateLong };
+  return { DOCS, DEFAULTS, set, text, org, chair, isCustom, label, blocks, many, html, dateLong };
 })();
