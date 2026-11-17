@@ -255,8 +255,9 @@ const Tools = (() => {
     if (!F.date) F.date = today();
     const list = docList(), canEdit = Auth.can('tools.save');
     const o = docOpts();
-    const first = list[0] || null;
-    const preview = Forms.html(Forms.blocks(F.doc, first, o(first)));
+    const group = Forms.isGroup(F.doc);
+    const first = group ? null : (list[0] || null);
+    const preview = Forms.html(group ? docBlocks() : Forms.blocks(F.doc, first, o(first)));
     const editor = F.edit && canEdit ? `<div class="card no-print"><h2 style="margin-top:0">Dokumentų tekstų redagavimas</h2>
       <div class="tool-opts"><label>Organizacijos pavadinimas ({taryba})<input data-fdraft="org" value="${esc(F.draft.org !== undefined ? F.draft.org : Forms.org())}" maxlength="150"></label>
       <label>Tarybos pirmininko (-ės) vardas, pavardė ({pirmininkas})<input data-fdraft="chair" value="${esc(F.draft.chair !== undefined ? F.draft.chair : Forms.chair())}" maxlength="150"></label>
@@ -269,18 +270,18 @@ const Tools = (() => {
       <label>Dokumentas<select data-tool="F.doc">${Forms.DOCS.map(([k, l]) => `<option value="${k}" ${F.doc === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
       <label>Data dokumente<input type="date" data-tool="F.date" value="${esc(F.date)}"></label>
       <label class="check"><input type="checkbox" data-tool="F.blank" ${F.blank ? 'checked' : ''}> Tuščias blankas (be mokinio duomenų)</label></div>
-      <div class="actions" style="margin-top:12px"><button class="btn primary" data-act="tool-docx" data-t="docs">Atsisiųsti .docx${F.blank ? '' : ` (${list.length})`}</button><button class="btn" data-act="tool-doc-print">${ICON.print} Spausdinti</button>${canEdit ? '<button class="btn" data-act="tool-doc-edit">Redaguoti tekstus</button>' : ''}</div>
-      <p class="sub" style="margin:10px 0 0">${F.blank ? 'Bus sukurtas vienas tuščias blankas.' : list.length ? `Kiekvienam pažymėtam mokiniui (${list.length}) sukuriamas atskiras lapas su jo vardu, klase ir komitetais. Peržiūra – pirmo sąraše.` : 'Pasirinkite mokinius aukščiau.'} Tekstai bendri visiems komitetams.</p></div></div>
-      ${editor}<div class="doc-preview">${list.length || F.blank ? preview : '<div class="card"><p class="muted">Mokinių nėra.</p></div>'}</div>`;
+      <div class="actions" style="margin-top:12px"><button class="btn primary" data-act="tool-docx" data-t="docs">Atsisiųsti .docx${F.blank || group ? '' : ` (${list.length})`}</button><button class="btn" data-act="tool-doc-print">${ICON.print} Spausdinti</button>${canEdit ? '<button class="btn" data-act="tool-doc-edit">Redaguoti tekstus</button>' : ''}</div>
+      <p class="sub" style="margin:10px 0 0">${F.blank ? 'Bus sukurtas vienas tuščias blankas.' : group ? `Vienas bendras dokumentas; pažymėti mokiniai (${list.length}) įrašomi į dalyvių sąrašą, jei jis numatytas.` : list.length ? `Kiekvienam pažymėtam mokiniui (${list.length}) sukuriamas atskiras lapas su jo vardu, klase ir komitetais. Peržiūra – pirmo sąraše.` : 'Pasirinkite mokinius aukščiau.'} Tekstai bendri visiems komitetams.</p></div></div>
+      ${editor}<div class="doc-preview">${list.length || F.blank || group ? preview : '<div class="card"><p class="muted">Mokinių nėra.</p></div>'}</div>`;
   }
-  function docBlocks() { const o = docOpts(); return Forms.many(F.doc, docList(), (s) => o(s)); }
+  function docBlocks() { const o = docOpts(); return Forms.many(F.doc, docList(), (s) => { const x = o(s); if (!s && Forms.isGroup(F.doc) && !F.blank) x.coms = comName(cid()); return x; }); }
   function docDocx() {
-    if (!F.blank && !docList().length) { toast('Pasirinkite bent vieną mokinį'); return; }
+    if (!F.blank && !Forms.isGroup(F.doc) && !docList().length) { toast('Pasirinkite bent vieną mokinį'); return; }
     Docx.save(`${Forms.label(F.doc)}-${F.date || today()}`, Docx.build(docBlocks(), { size: 10, margin: 1000 }));
     logClient('export-doc', Forms.label(F.doc) + ' ×' + (F.blank ? 1 : docList().length));
   }
   function docPrint() {
-    if (!F.blank && !docList().length) { toast('Pasirinkite bent vieną mokinį'); return; }
+    if (!F.blank && !Forms.isGroup(F.doc) && !docList().length) { toast('Pasirinkite bent vieną mokinį'); return; }
     let box = document.getElementById('printForms');
     if (!box) { box = document.createElement('div'); box.id = 'printForms'; document.body.appendChild(box); }
     box.innerHTML = Forms.html(docBlocks());

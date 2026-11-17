@@ -4,7 +4,9 @@
    Kintamieji: {vardas} {pavarde_vardas} {klase} {komitetai} {el_pastas} {lankomumas} {data} {data_iso} {taryba} {pirmininkas} {rengejas}. Nežinoma reikšmė paliekama kaip ______ (užpildoma ranka). */
 const Forms = (() => {
   const LINE = '_'.repeat(78);
-  const DOCS = [['join', 'Priėmimo lapas'], ['rejoin', 'Grįžimo (priėmimo atgal) lapas'], ['leave', 'Išėjimo lapas'], ['warn', 'Įspėjimo lapas'], ['remove', 'Pašalinimo lapas'], ['talk', 'Pokalbio lapas']];
+  const DOCS = [['join', 'Priėmimo lapas'], ['rejoin', 'Grįžimo (priėmimo atgal) lapas'], ['leave', 'Išėjimo lapas'], ['warn', 'Įspėjimo lapas'], ['remove', 'Pašalinimo lapas'], ['talk', 'Pokalbio lapas'], ['cert', 'Pažyma apie dalyvavimą Taryboje'], ['minutes', 'Posėdžio protokolas'], ['plan', 'Renginio / projekto planas']];
+  const GROUP = ['minutes', 'plan']; /* dokumentai ne vienam nariui: sukuriamas vienas lapas */
+  const isGroup = (k) => GROUP.includes(k);
   const WHO = `Narys: **{vardas}**
 Klasė: **{klase}**
 Komitetas (-ai): **{komitetai}**
@@ -167,6 +169,92 @@ Pokalbis yra prevencinė priemonė ir įspėjimas nėra skiriamas. Jei situacija
 
 ~ Narys (-ė) {vardas}, parašas
 ~ Pokalbį vedęs (-usi) asmuo, parašas`,
+    cert: `${HEAD('Pažyma apie dalyvavimą Tarybos veikloje')}
+Pažymima, kad **{vardas}**, {klase} klasės mokinys (-ė), el. paštas {el_pastas}, nuo ______________________ iki ______________________ buvo {taryba} narys (-ė) ir dalyvavo komiteto (-ų) **{komitetai}** veikloje.
+
+Lankomumo Tarybos susirinkimuose ir renginiuose rodiklis: **{lankomumas}**.
+
+# Nario veikla (pagrindiniai darbai, renginiai, projektai)
+${'_'.repeat(78)}
+${'_'.repeat(78)}
+${'_'.repeat(78)}
+${'_'.repeat(78)}
+
+# Atliktų savanorystės valandų skaičius (jei skaičiuojama)
+Iš viso: ______ val.
+
+Pažyma išduota pateikti: ${'_'.repeat(50)}
+
+~ Tarybos pirmininkas (-ė) {pirmininkas}, parašas
+~ Tarybos sekretorius (-ė), parašas`,
+    minutes: `${HEAD('Posėdžio protokolas')}
+Posėdžio data: **{data}**, pradžia ______ val., pabaiga ______ val.
+Vieta: ${'_'.repeat(54)}
+Posėdžio pirmininkas (-ė): **{pirmininkas}**
+Posėdžio sekretorius (-ė): ${'_'.repeat(48)}
+
+# 1. Dalyviai ir kvorumas (įstatų 4.3 p.)
+Dalyvavo narių: ______ iš ______ . Posėdis teisėtas, jei dalyvauja daugiau nei pusė Tarybos narių: ☐ teisėtas  ☐ neteisėtas
+Dalyviai: {dalyviai}
+Nedalyvavo (nurodyti, ar pateisinta): ${'_'.repeat(42)}
+Kiti dalyviai / svečiai: ${'_'.repeat(50)}
+
+# 2. Darbotvarkė
+1. ${'_'.repeat(70)}
+2. ${'_'.repeat(70)}
+3. ${'_'.repeat(70)}
+
+# 3. Svarstyta ir nutarta
+1. Svarstyta: ${'_'.repeat(60)}
+Nutarta: ${'_'.repeat(64)}
+Balsavimas (už / prieš / susilaikė): ______ / ______ / ______
+2. Svarstyta: ${'_'.repeat(60)}
+Nutarta: ${'_'.repeat(64)}
+Balsavimas (už / prieš / susilaikė): ______ / ______ / ______
+3. Svarstyta: ${'_'.repeat(60)}
+Nutarta: ${'_'.repeat(64)}
+Balsavimas (už / prieš / susilaikė): ______ / ______ / ______
+
+# 4. Įspėjimai, narystės pokyčiai ir užduotys
+Skirti įspėjimai, priimti ar pašalinti nariai (vardas, pavardė, registro Nr.): ${'_'.repeat(20)}
+Užduotys (kas, ką, iki kada): ${'_'.repeat(46)}
+${'_'.repeat(78)}
+Kito posėdžio data: ______________________
+
+~ Posėdžio pirmininkas (-ė) {pirmininkas}, parašas
+~ Posėdžio sekretorius (-ė), parašas`,
+    plan: `${HEAD('Renginio / projekto planas')}
+Pavadinimas: ${'_'.repeat(62)}
+Atsakingas komitetas: **{komitetai}**    Koordinatorius (-ė): ${'_'.repeat(30)}
+Data, laikas ir vieta: ${'_'.repeat(52)}
+Plano parengimo data: **{data}**
+
+# 1. Tikslas ir tikslinė auditorija
+Tikslas: ${'_'.repeat(66)}
+Kam skirta (klasės, mokinių skaičius): ${'_'.repeat(40)}
+
+# 2. Užduotys, atsakingi ir terminai
+1. ${'_'.repeat(36)}   Atsakingas (-a): ${'_'.repeat(18)}   Iki: ____________
+2. ${'_'.repeat(36)}   Atsakingas (-a): ${'_'.repeat(18)}   Iki: ____________
+3. ${'_'.repeat(36)}   Atsakingas (-a): ${'_'.repeat(18)}   Iki: ____________
+4. ${'_'.repeat(36)}   Atsakingas (-a): ${'_'.repeat(18)}   Iki: ____________
+5. ${'_'.repeat(36)}   Atsakingas (-a): ${'_'.repeat(18)}   Iki: ____________
+
+# 3. Ištekliai ir biudžetas
+Reikalinga (patalpos, įranga, lėšos, rėmėjai): ${'_'.repeat(36)}
+${'_'.repeat(78)}
+Susitarta su gimnazijos administracija (kam ir kada): ${'_'.repeat(28)}
+
+# 4. Viešinimas ir rizikos
+Kaip ir kur viešinsime (socialiniai tinklai, skelbimai): ${'_'.repeat(26)}
+Galimos rizikos ir kaip jų išvengsime: ${'_'.repeat(38)}
+
+# 5. Patvirtinimas
+Planas ☐ patvirtintas  ☐ patvirtintas su pastabomis  ☐ nepatvirtintas
+Pastabos: ${'_'.repeat(66)}
+
+~ Parengė: komiteto koordinatorius (-ė), parašas
+~ Tvirtinu. Tarybos pirmininkas (-ė) {pirmininkas}, parašas`,
   };
 
   let saved = {};
@@ -187,9 +275,9 @@ Pokalbis yra prevencinė priemonė ir įspėjimas nėra skiriamas. Jei situacija
     return {
       vardas: s ? v([s.first, s.last].filter(Boolean).join(' ')) : BLANK.repeat(2),
       pavarde_vardas: s ? v([s.last, s.first].filter(Boolean).join(' ')) : BLANK.repeat(2),
-      klase: v(s && s.grade), komitetai: v(s && o.coms), el_pastas: v(s && s.email),
+      klase: v(s && s.grade), komitetai: v(o.coms), el_pastas: v(s && s.email),
       lankomumas: s && o.rate != null ? o.rate + ' %' : BLANK, data: v(dateLong(o.date)), data_iso: v(o.date), taryba: org(),
-      pirmininkas: chair() || BLANK, rengejas: o.author || BLANK,
+      pirmininkas: chair() || BLANK, rengejas: o.author || BLANK, dalyviai: o.names && o.names.length ? o.names.join(', ') : BLANK.repeat(5),
     };
   }
   const fill = (t, vs) => t.replace(/\{(\w+)\}/g, (m, k) => (k in vs ? vs[k] : m));
@@ -216,6 +304,7 @@ Pokalbis yra prevencinė priemonė ir įspėjimas nėra skiriamas. Jei situacija
 
   /* Keli mokiniai → vienas dokumentas, kiekvienas naujame lape. */
   function many(key, list, o) {
+    if (isGroup(key)) return blocks(key, null, Object.assign({}, o(null), { names: list.map((s) => [s.last, s.first].filter(Boolean).join(' ')).sort((a, b) => a.localeCompare(b, 'lt')) }));
     const all = [];
     (list.length ? list : [null]).forEach((s, i) => {
       if (i) all.push({ t: 'pb' });
@@ -242,5 +331,5 @@ Pokalbis yra prevencinė priemonė ir įspėjimas nėra skiriamas. Jei situacija
     return out + '</section>';
   }
 
-  return { DOCS, DEFAULTS, set, text, org, chair, isCustom, label, blocks, many, html, dateLong };
+  return { DOCS, isGroup, DEFAULTS, set, text, org, chair, isCustom, label, blocks, many, html, dateLong };
 })();
