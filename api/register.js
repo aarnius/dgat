@@ -96,6 +96,7 @@ export default handler(async (req, res, body) => {
       return { ok: true, entries: await listRows(sql) };
     }
     case 'void': case 'restore': {
+      requirePerm(me, 'register.void');
       const id = str(body.id, 40), v = body.action === 'void';
       if (v && !str(body.reason, 300)) throw new HttpError(400, 'Nurodykite panaikinimo priežastį.');
       const [r] = await sql`UPDATE register_entries SET status = ${v ? 'void' : 'active'}, void_reason = ${v ? str(body.reason, 300) : ''} WHERE id = ${id} RETURNING doc_no`;
