@@ -55,7 +55,7 @@ const Docx = (() => {
     }
   };
 
-  function build(blocks, { landscape = false, font = 'Calibri', size = 10, margin = 1134 } = {}) {
+  function build(blocks, { landscape = false, font = 'Times New Roman', size = 10, margin = 1134 } = {}) {
     const W = landscape ? 16838 : 11906, H = landscape ? 11906 : 16838, M = margin, usable = W - 2 * M;
     const doc = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${blocks.map((b, i) => block(blocks[i + 1] && blocks[i + 1].t === 'sig' && b.t !== 'pb' ? { ...b, keep: true } : b.t === 'sig' && blocks[i + 1] && blocks[i + 1].t === 'sig' ? { ...b, keep: true } : b, usable)).join('')}<w:sectPr><w:pgSz w:w="${W}" w:h="${H}"${landscape ? ' w:orient="landscape"' : ''}/><w:pgMar w:top="${M}" w:right="${M}" w:bottom="${M}" w:left="${M}" w:header="567" w:footer="567" w:gutter="0"/></w:sectPr></w:body></w:document>`;
     const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="${font}" w:hAnsi="${font}" w:cs="${font}" w:eastAsia="${font}"/><w:sz w:val="${size * 2}"/><w:lang w:val="lt-LT"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="100" w:line="252" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style></w:styles>`;
