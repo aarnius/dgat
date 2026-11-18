@@ -55,6 +55,13 @@ export default handler(async (req, res, body) => {
       return { ok: true };
     }
 
+    case 'set-skin': {
+      const me = requireUser(await getUser(req));
+      const skin = str(body.skin, 20);
+      if (!['ink', 'classic', 'paper', 'soft', 'pro'].includes(skin)) throw new HttpError(400, 'Nežinomas stilius.');
+      await sql`UPDATE users SET ui_skin = ${skin} WHERE id = ${me.id}`;
+      return { ok: true, skin };
+    }
     case 'account': {
       const me = requireUser(await getUser(req), true);
       const name = str(body.name, 100), pw = String(body.password || '');
