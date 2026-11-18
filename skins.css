@@ -99,3 +99,65 @@ html[data-skin="pro"] .hero-actions button, html[data-skin="pro"] .hero-tools bu
 .skin-pick i { display: block; height: 34px; border-radius: 8px; margin-bottom: 8px; }
 .skin-pick b { display: block; font-size: 0.85rem; }
 .skin-pick small { color: var(--muted); font-size: 0.72rem; }
+
+/* =====================================================================
+   IŠDĖSTYMAS PAGAL STILIŲ (staliniame kompiuteryje; telefone visi stiliai naudoja apatinę juostą)
+   paper – viršutinė meniu juosta, siauras „dokumento“ turinys
+   soft  – viršuje plona „piliulė“, apačioje plūduriuojanti piktogramų juosta (dock)
+   pro   – siaura piktogramų juosta kairėje, išsiskleidžia užvedus pelę; kompaktiška „Šiandien“ juosta
+   ===================================================================== */
+@media (min-width: 821px) {
+  /* ---- PAPER: viršutinė juosta ---- */
+  html[data-skin="paper"] .shell { display: block; }
+  html[data-skin="paper"] .side { position: sticky; top: 0; z-index: 30; height: auto; max-height: none; overflow: visible; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px 20px; padding: 10px 32px; margin: 0; border: 0; border-bottom: 3px double var(--line); border-radius: 0; }
+  html[data-skin="paper"] .side > * { flex-shrink: 1; }
+  html[data-skin="paper"] .brand { order: 1; }
+  html[data-skin="paper"] .nav { order: 4; flex: 1 1 100%; flex-direction: row; flex-wrap: wrap; gap: 2px; border-top: 1px solid var(--line); padding-top: 6px; }
+  html[data-skin="paper"] .nav button { padding: 7px 12px; font-size: 0.9rem; }
+  html[data-skin="paper"] .gsearch { order: 2; flex: 1 1 200px; max-width: 320px; margin-left: auto; }
+  html[data-skin="paper"] .class-box { order: 3; display: flex; align-items: center; gap: 6px; padding: 3px; }
+  html[data-skin="paper"] .class-box .lbl, html[data-skin="paper"] .class-links { display: none; }
+  html[data-skin="paper"] .side-foot { order: 3; margin: 0; display: flex; align-items: center; gap: 8px; }
+  html[data-skin="paper"] .userchip { margin: 0; }
+  html[data-skin="paper"] .content { max-width: 960px; padding-top: 28px; }
+  html[data-skin="paper"] .page-head { display: block; text-align: center; border-bottom: 1px solid var(--line); padding-bottom: 14px; }
+  html[data-skin="paper"] .page-head .actions { justify-content: center; margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; }
+  html[data-skin="paper"] .stat { border-left: 4px solid var(--ink); } html[data-skin="paper"] .stat::after { display: none; }
+  html[data-skin="paper"] .card { border-top: 3px double var(--line); }
+  html[data-skin="paper"] .hero { text-align: center; padding: 30px; } html[data-skin="paper"] .hero-actions { justify-content: center; }
+
+  /* ---- SOFT: viršutinė piliulė + apatinis dock ---- */
+  html[data-skin="soft"] .shell { display: block; }
+  html[data-skin="soft"] .side { position: sticky; top: 12px; z-index: 30; height: auto; max-height: none; overflow: visible; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 10px 22px; margin: 12px auto 0; max-width: 1180px; width: calc(100% - 32px); border-radius: 40px; backdrop-filter: none; background: color-mix(in srgb, var(--surface) 92%, transparent); }
+  html[data-skin="soft"] .side > * { flex-shrink: 1; }
+  html[data-skin="soft"] .brand { order: 1; }
+  html[data-skin="soft"] .gsearch { order: 2; flex: 1 1 200px; max-width: 360px; margin-left: auto; }
+  html[data-skin="soft"] .class-box { order: 3; display: flex; align-items: center; padding: 3px; }
+  html[data-skin="soft"] .class-box .lbl, html[data-skin="soft"] .class-links { display: none; }
+  html[data-skin="soft"] .side-foot { order: 4; margin: 0; display: flex; align-items: center; gap: 8px; }
+  html[data-skin="soft"] .userchip { margin: 0; }
+  html[data-skin="soft"] .nav { position: fixed; z-index: 40; left: 50%; transform: translateX(-50%); bottom: 20px; flex-direction: row; gap: 2px; padding: 8px; max-width: calc(100vw - 32px); overflow-x: auto; scrollbar-width: none; border-radius: 999px; background: color-mix(in srgb, var(--surface) 86%, transparent); backdrop-filter: blur(18px); box-shadow: 0 16px 44px rgba(13, 80, 80, 0.22); border: 1px solid var(--line); }
+  html[data-skin="soft"] .nav button { flex-direction: column; gap: 2px; font-size: 0.68rem; padding: 8px 14px; min-width: 64px; align-items: center; border-radius: 999px; }
+  html[data-skin="soft"] .content { padding-bottom: 130px; }
+  html[data-skin="soft"] .page-head h1 { font-size: clamp(1.8rem, 4vw, 2.6rem); }
+
+  /* ---- PRO: siaura piktogramų juosta ---- */
+  html[data-skin="pro"] .shell { display: block; padding-left: 64px; }
+  html[data-skin="pro"] .side { position: fixed; left: 0; top: 0; bottom: 0; z-index: 50; width: 64px; height: 100vh; height: 100dvh; padding: 14px 10px; overflow: hidden; transition: width 0.18s ease, box-shadow 0.18s; }
+  html[data-skin="pro"] .side:hover, html[data-skin="pro"] .side:focus-within { width: 250px; box-shadow: 8px 0 32px rgba(18, 24, 38, 0.18); overflow-y: auto; }
+  html[data-skin="pro"] .side:not(:hover):not(:focus-within) :is(.gsearch, .class-box, .userchip b, .userchip small, .side-foot .btn span, .brand span:not(.logo)) { display: none; }
+  html[data-skin="pro"] .side:not(:hover):not(:focus-within) .brand { font-size: 0; }
+  html[data-skin="pro"] .side:not(:hover):not(:focus-within) .nav button { padding: 9px; justify-content: center; }
+  html[data-skin="pro"] .side:not(:hover):not(:focus-within) .nav button span { display: none; }
+  html[data-skin="pro"] .side:not(:hover):not(:focus-within) .userchip { display: none; }
+  html[data-skin="pro"] .side:not(:hover):not(:focus-within) .userchip .icon-btn, html[data-skin="pro"] .side:not(:hover):not(:focus-within) .userchip [data-act="my-account"] > :not(.av) { display: none; }
+  html[data-skin="pro"] .content { max-width: 1400px; padding-top: 18px; }
+  html[data-skin="pro"] .stat::after { display: none; } html[data-skin="pro"] .stat .v { font-size: 1.6rem; }
+  html[data-skin="pro"] .page-head { margin-bottom: 14px; } html[data-skin="pro"] .page-head h1 { font-size: 1.35rem; }
+  html[data-skin="pro"] .hero { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; padding: 12px 16px; margin-bottom: 14px; }
+  html[data-skin="pro"] .hero small { display: none; }
+  html[data-skin="pro"] .hero h2 { margin: 0; font-size: 1.05rem; }
+  html[data-skin="pro"] .hero p { margin: 0; font-size: 0.85rem; }
+  html[data-skin="pro"] .hero-actions { margin-left: auto; }
+  html[data-skin="pro"] .hero-tools { position: static; order: 3; }
+}
