@@ -597,7 +597,7 @@ table.sheet.fs-l { font-size: 1.05rem; }
 
 /* Dokumentų blankai (peržiūra ir spausdinimas) */
 .doc-edit { width: 100%; font: 0.85rem/1.5 ui-monospace, Menlo, Consolas, monospace; padding: 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); color: var(--text); resize: vertical; }
-.form-sheet { background: #fff; color: #111; max-width: 794px; margin: 0 auto 18px; padding: 40px 50px; border-radius: 10px; border: 1px solid var(--line); box-shadow: var(--shadow); font-size: 0.85rem; line-height: 1.4; }
+.form-sheet { font-family: "Times New Roman", Times, "Liberation Serif", serif; background: #fff; color: #111; max-width: 794px; margin: 0 auto 18px; padding: 40px 50px; border-radius: 10px; border: 1px solid var(--line); box-shadow: var(--shadow); font-size: 0.85rem; line-height: 1.4; }
 .form-sheet p { margin: 0 0 4px; }
 .f-title { text-align: center; font-size: 1.1rem; margin: 0 0 6px; text-transform: none; }
 .f-sub { text-align: center; font-weight: 700; font-size: 1rem; margin: 0 0 8px; }

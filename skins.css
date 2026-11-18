@@ -166,3 +166,18 @@ html[data-skin="pro"] .hero-actions button, html[data-skin="pro"] .hero-tools bu
 html[data-skin="pro"] .brand .logo { flex: none; width: 36px; height: 36px; min-width: 36px; }
 html[data-skin="pro"] .brand .logo-img { width: 36px; height: 36px; object-fit: contain; }
 @media (min-width: 821px) { html[data-skin="pro"] .side:not(:hover):not(:focus-within) .brand { justify-content: center; padding: 0; gap: 0; } }
+
+/* =====================================================================
+   SPAUSDINIMAS: visada įprastai (balta, juodas tekstas, Times New Roman), nepriklausomai nuo pasirinkto stiliaus ar tamsaus režimo
+   ===================================================================== */
+@media print {
+  html:not(#p), html[data-skin]:not(#p), html[data-theme][data-skin]:not(#p) {
+    --bg: #fff; --surface: #fff; --surface-2: #f3f4f8; --line: #cfd3e3; --text: #000; --muted: #444; --shadow: none; --radius: 4px;
+    --brand: #000; --brand-2: #000; --glow1: transparent; --glow2: transparent; --lime: #000; --ink: #000; --ink2: #000;
+  }
+  html:not(#p) body { background: #fff !important; color: #000 !important; font-family: "Times New Roman", Times, "Liberation Serif", serif !important; }
+  html:not(#p) :is(.card, .stat, .dw, .form-sheet) { background: #fff !important; color: #000 !important; box-shadow: none !important; border-radius: 4px !important; border-color: #bbb !important; backdrop-filter: none !important; }
+  html:not(#p) :is(h1, h2, h3, h4, th, td, p, span, small, label, b) { font-family: "Times New Roman", Times, "Liberation Serif", serif !important; color: inherit; }
+  html:not(#p) :is(.hero, .hero-tools, .side, .nav) { display: none !important; }
+  html:not(#p) :is(td, th) { color: #000 !important; }
+}
