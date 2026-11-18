@@ -161,3 +161,8 @@ html[data-skin="pro"] .hero-actions button, html[data-skin="pro"] .hero-tools bu
   html[data-skin="pro"] .hero-actions { margin-left: auto; }
   html[data-skin="pro"] .hero-tools { position: static; order: 3; }
 }
+
+/* logotipas siauroje juostoje nebespaudžiamas */
+html[data-skin="pro"] .brand .logo { flex: none; width: 36px; height: 36px; min-width: 36px; }
+html[data-skin="pro"] .brand .logo-img { width: 36px; height: 36px; object-fit: contain; }
+@media (min-width: 821px) { html[data-skin="pro"] .side:not(:hover):not(:focus-within) .brand { justify-content: center; padding: 0; gap: 0; } }

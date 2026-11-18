@@ -1,6 +1,6 @@
 /* Paprastas service worker: leidžia įdiegti programėlę ir greitai atidaryti svetainės apvalkalą.
    Duomenys (/api/*) niekada nekešuojami – jie visada imami iš serverio. */
-const CACHE = 'lankomumas-v27';
+const CACHE = 'lankomumas-v28';
 const SHELL = ['zurnalas', 'styles.css', 'theme2.css', 'skins.css', 'ui.js', 'docx.js', 'forms.js', 'auth.js', 'sync.js', 'log.js', 'activities.js', 'tools.js', 'register.js', 'dashboard.js', 'app.js', 'favicon.svg', 'manifest.json', 'icon-192.png'];
 
 self.addEventListener('install', (e) => {
