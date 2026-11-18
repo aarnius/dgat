@@ -58,6 +58,13 @@ function currentTheme() {
   if (!t) t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   return t;
 }
+/* Išvaizdos stilius (ink / classic / paper / soft / pro): kiekvienas vartotojas renkasi sau, saugoma jo paskyroje. */
+function applySkin(k) {
+  k = ['ink', 'classic', 'paper', 'soft', 'pro'].includes(k) ? k : 'ink';
+  document.documentElement.dataset.skin = k;
+  const l = document.getElementById('theme2css'); if (l) l.disabled = k === 'classic';
+  try { localStorage.setItem('skin', k); } catch (e) { /* ignore */ }
+}
 function applyTheme() {
   if (document.documentElement) document.documentElement.dataset.theme = currentTheme();
 }
@@ -404,6 +411,7 @@ function render() {
   if (!Auth.user()) { Auth.renderAuth(); return; }
   if (Auth.user().mustChange) { Auth.renderForceChange(); return; }
   document.body.classList.remove('auth-mode');
+  { const sk = Auth.user().skin || 'ink'; if (document.documentElement.dataset.skin !== sk) applySkin(sk); }
   if (!Auth.can(VIEW_PERM[view])) {
     const ok = Object.keys(VIEW_PERM).find((k) => Auth.can(VIEW_PERM[k]));
     if (!ok) {

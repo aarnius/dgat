@@ -268,12 +268,15 @@ const Auth = (() => {
     dlg.showModal();
     pwUpdate(dlg.querySelector('form'));
   }
+  const SKINS = [['ink', 'Violetinis', 'Šiuolaikinis, apvalus', 'linear-gradient(135deg,#101216,#8b5cf6)'], ['classic', 'Klasikinis', 'Senoji išvaizda', 'linear-gradient(135deg,#3a4de0,#7c3aed)'],
+    ['paper', 'Popierinis', 'Oficialus, bordo', 'linear-gradient(135deg,#7a1f3d,#d8c9a8)'], ['soft', 'Minkštas', 'Labai apvalus, žalsvas', 'linear-gradient(135deg,#0d9488,#38bdf8)'], ['pro', 'Kompaktiškas', 'Lygus, mėlynas', 'linear-gradient(135deg,#2563eb,#e2e8f0)']];
   function openAccountDialog() {
     dlg.innerHTML = `<div class="dlg"><div class="dlg-head"><h3>Mano paskyra</h3><button type="button" class="icon-btn" data-act="close-auth" aria-label="Uždaryti">&times;</button></div>
       <form data-form="account">
         <div class="who" style="margin-bottom:14px;gap:14px">${avatar({ first: me.name, uid: me.id, photo: me.photo })}<div><b>Mano nuotrauka</b><small class="muted" style="display:block">Ją mato mokiniai, kuriems pažymite lankomumą</small>
           <button type="button" class="btn small" data-act="my-photo-pick" style="margin-top:6px">Pasirinkti</button>${me.photo ? ' <button type="button" class="btn small danger" data-act="my-photo-del" style="margin-top:6px">Pašalinti</button>' : ''}</div></div>
         ${pkOk() ? '<fieldset class="classpick" id="pkBox"><legend>Passkey (prisijungimas biometrija)</legend><small class="muted">Prisijunkite pirštų atspaudu, veidu ar kompiuterio PIN – be slaptažodžio.</small><div id="pkList"><small class="muted">Kraunama…</small></div><button type="button" class="btn small" data-act="pk-add" style="margin-top:8px">Pridėti šį įrenginį</button></fieldset>' : ''}
+        <fieldset class="classpick" style="max-height:none"><legend>Išvaizda (matoma tik jums)</legend><div class="skin-pick">${SKINS.map(([k, n, d, c]) => `<button type="button" class="${(me.skin || 'ink') === k ? 'on' : ''}" data-act="set-skin" data-skin="${k}"><i style="background:${c}"></i><b>${n}</b><small>${d}</small></button>`).join('')}</div></fieldset>
         <label>Vardas ir pavardė<input name="name" required value="${esc(me.name)}"></label>
         <label>Vartotojo vardas (prisijungimui)<input name="username" required autocapitalize="none" spellcheck="false" value="${esc(me.username)}"></label>
         <label>El. paštas<input name="email" type="email" autocapitalize="none" spellcheck="false" value="${esc(me.email || '')}" placeholder="vardas@pastas.lt"></label>
@@ -319,6 +322,12 @@ const Auth = (() => {
         api('/api/auth', { action: 'logout' }).catch(() => { /* ignore */ }).then(() => { me = null; admin = null; Sync.reset(); view = 'dashboard'; render(); });
         break;
       case 'my-account': openAccountDialog(); break;
+      case 'set-skin': {
+        const k = el.dataset.skin; me.skin = k; applySkin(k);
+        dlg.querySelectorAll('.skin-pick button').forEach((b) => b.classList.toggle('on', b.dataset.skin === k));
+        api('/api/auth', { action: 'set-skin', skin: k }).catch((e) => toast(e.message));
+        break;
+      }
       case 'my-photo-pick':
         photoFromFile().then(async (image) => {
           if (!image) return;
