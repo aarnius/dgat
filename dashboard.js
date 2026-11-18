@@ -166,9 +166,11 @@ const Dash = (() => {
         <div class="actions"><button class="btn small" data-act="dash-reset">Atkurti numatytąjį</button><button class="btn small primary" data-act="dash-edit">Baigti</button></div></div>
         <h4 class="card-sec">Pridėti kortelę</h4>
         ${hidden.length ? `<div class="dash-add">${hidden.map((id) => `<button class="dash-add-btn" data-act="dash-add" data-w="${id}">${ICON.plus}<span><b>${esc(W[id].t)}</b><small>${esc(W[id].d)}</small></span></button>`).join('')}</div>` : '<p class="muted">Visos kortelės jau pridėtos.</p>'}</div>` : '';
-    app.innerHTML = head(`${greeting()}, ${esc(Auth.user().name.split(' ')[0])} 👋`, `${esc(curClass().name)} · ${prettyDate(x.t)}`,
-      `<button class="btn ${edit ? 'primary' : ''}" data-act="dash-edit">${sliders} ${edit ? 'Baigti pritaikymą' : 'Pritaikyti'}</button><button class="btn" data-act="open-import">${ICON.upload} Importuoti mokinius</button><button class="btn primary" data-act="go-attendance">${ICON.check} Žymėti lankomumą</button>`) +
-      bar + (shown ? `<div class="dash-grid">${shown}</div>` : '<div class="card empty"><p>Apžvalgoje nėra nė vienos kortelės.</p></div>');
+    const q = (v, ic, t, main) => (Auth.can(VIEW_PERM[v]) ? `<button class="${main ? 'main' : ''}" data-act="tab" data-view="${v}">${ic}${t}</button>` : '');
+    const hero = `<div class="hero"><div class="hero-tools"><button data-act="dash-edit" aria-label="Pritaikyti apžvalgą">${sliders}<span>${edit ? 'Baigti' : 'Pritaikyti'}</span></button><button data-act="open-import" aria-label="Importuoti mokinius">${ICON.upload}<span>Importuoti</span></button></div><small>${prettyDate(x.t)}</small><h2>${greeting()}, ${esc(Auth.user().name.split(' ')[0])} 👋</h2><p>${esc(curClass().name)}</p>
+      <div class="hero-actions">${q('attendance', ICON.check, 'Žymėti lankomumą', true)}${q('activities', ICON.cal, 'Veiklos')}${q('students', ICON.users, 'Nariai')}${q('register', ICON.book, 'Registras')}${q('tools', ICON.tools, 'Dokumentai')}</div></div>`;
+    app.innerHTML =
+      hero + bar + (shown ? `<div class="dash-grid">${shown}</div>` : '<div class="card empty"><p>Apžvalgoje nėra nė vienos kortelės.</p></div>');
   }
 
   /* ---------- veiksmai ---------- */
